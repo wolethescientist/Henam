@@ -48,8 +48,6 @@ import SkeletonLoader from '../../components/common/SkeletonLoader';
 import { useGetUnifiedTeamsDataQuery } from '../../store/api/unifiedApis';
 import { useDeleteTeamMutation, useCreateTeamMutation, useUpdateTeamMutation, useAddTeamMemberMutation, useRemoveTeamMemberMutation } from '../../store/api/teamsApi';
 import ApiCallTracker from '../../components/debug/ApiCallTracker';
-import { useDispatch } from 'react-redux';
-import { baseApi } from '../../store/api/baseApi';
 import type { Team, CreateTeamForm } from '../../types';
 import { useHighlight } from '../../hooks/useHighlight';
 import { useCrudFeedback } from '../../hooks/useCrudFeedback';
@@ -68,7 +66,6 @@ const OptimizedTeamsPage: React.FC = () => {
     supervisor_id: undefined,
   });
   const { getHighlightStyles } = useHighlight();
-  const dispatch = useDispatch();
 
   // Debounce search term to avoid excessive API calls
   useEffect(() => {

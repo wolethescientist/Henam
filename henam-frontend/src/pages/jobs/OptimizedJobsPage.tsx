@@ -320,7 +320,7 @@ const OptimizedJobsPage: React.FC = () => {
     setSelectedJobForAssignment(null);
   };
 
-  const handleAssignmentSuccess = async (timestamp?: number) => {
+  const handleAssignmentSuccess = async () => {
     console.log('🔄 Assignment success, forcing refetch...');
     
     // Small delay to ensure backend completes
