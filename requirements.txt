@@ -1,0 +1,36 @@
+# FastAPI and Web Framework
+fastapi
+uvicorn[standard]
+python-multipart
+starlette
+
+# Database
+sqlalchemy
+psycopg2-binary
+alembic
+
+# Authentication & Security
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt
+pydantic[email]
+pydantic-settings
+
+# Redis for Caching
+redis
+
+# Web Push Notifications
+pywebpush
+
+# PDF Generation
+reportlab
+
+# Excel Generation
+openpyxl
+
+# Data Visualization
+matplotlib
+numpy
+
+# Utilities
+python-dateutil

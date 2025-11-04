@@ -1,0 +1,244 @@
+/* Custom styles for react-big-calendar */
+.rbc-calendar {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  background: transparent;
+}
+
+.rbc-header {
+  background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
+  color: white;
+  font-weight: 600;
+  padding: 12px 8px;
+  border: none;
+  font-size: 14px;
+}
+
+.rbc-month-view {
+  border: none;
+}
+
+.rbc-month-row {
+  border: none;
+}
+
+.rbc-date-cell {
+  padding: 8px;
+  font-weight: 500;
+  color: #333;
+}
+
+.rbc-off-range-bg {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.rbc-today {
+  background: rgba(76, 175, 80, 0.1) !important;
+  border-radius: 8px;
+  margin: 2px;
+}
+
+.rbc-today .rbc-date-cell {
+  color: #2e7d32;
+  font-weight: 700;
+}
+
+.rbc-date-cell > a {
+  color: inherit;
+  text-decoration: none;
+  display: block;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.rbc-date-cell > a:hover {
+  background: rgba(76, 175, 80, 0.1);
+  transform: scale(1.05);
+}
+
+.rbc-event {
+  border-radius: 6px !important;
+  border: none !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  padding: 2px 4px !important;
+  margin: 1px 0 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+}
+
+.rbc-event:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15) !important;
+}
+
+.rbc-event-content {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rbc-month-view .rbc-date-cell {
+  min-height: 80px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: white !important;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.rbc-month-view .rbc-date-cell:hover {
+  background: rgba(76, 175, 80, 0.05);
+}
+
+.rbc-month-view .rbc-row {
+  min-height: 100px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.rbc-month-view .rbc-row-content {
+  min-height: 100px;
+}
+
+.rbc-month-view .rbc-row-segment {
+  padding: 0;
+  height: 100%;
+}
+
+.rbc-month-view .rbc-date-cell > a {
+  color: #333 !important;
+  text-decoration: none;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.rbc-month-view .rbc-date-cell > a:hover {
+  background: rgba(76, 175, 80, 0.1);
+  transform: scale(1.02);
+}
+
+/* Ensure day numbers are visible */
+.rbc-month-view .rbc-date-cell .rbc-date-cell-content {
+  color: #333 !important;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+/* Override any green backgrounds on date cells */
+.rbc-month-view .rbc-date-cell,
+.rbc-month-view .rbc-date-cell *,
+.rbc-month-view .rbc-row-segment,
+.rbc-month-view .rbc-row-segment * {
+  background: white !important;
+  color: #333 !important;
+}
+
+/* Keep the header green */
+.rbc-header {
+  background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%) !important;
+  color: white !important;
+}
+
+/* Force white background on all calendar cells */
+.rbc-month-view .rbc-date-cell {
+  background: white !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Ensure text is visible */
+.rbc-month-view .rbc-date-cell a,
+.rbc-month-view .rbc-date-cell span,
+.rbc-month-view .rbc-date-cell div {
+  color: #333 !important;
+  background: transparent !important;
+}
+
+.rbc-toolbar {
+  display: none; /* Hide default toolbar since we have custom one */
+}
+
+.rbc-btn-group {
+  display: none; /* Hide default view buttons */
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .rbc-header {
+    padding: 8px 4px;
+    font-size: 12px;
+  }
+  
+  .rbc-month-view .rbc-date-cell {
+    min-height: 60px;
+    padding: 4px;
+    font-size: 12px;
+  }
+  
+  .rbc-month-view .rbc-row {
+    min-height: 80px;
+  }
+  
+  .rbc-month-view .rbc-row-content {
+    min-height: 80px;
+  }
+}
+
+@media (max-width: 480px) {
+  .rbc-header {
+    padding: 6px 2px;
+    font-size: 11px;
+  }
+  
+  .rbc-month-view .rbc-date-cell {
+    min-height: 50px;
+    padding: 2px;
+    font-size: 11px;
+  }
+  
+  .rbc-month-view .rbc-row {
+    min-height: 60px;
+  }
+  
+  .rbc-month-view .rbc-row-content {
+    min-height: 60px;
+  }
+}
+
+/* Animation for smooth transitions */
+.rbc-calendar * {
+  transition: all 0.2s ease;
+}
+
+/* Custom scrollbar for event overflow */
+.rbc-month-view .rbc-row-content {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(76, 175, 80, 0.3) transparent;
+}
+
+.rbc-month-view .rbc-row-content::-webkit-scrollbar {
+  width: 4px;
+}
+
+.rbc-month-view .rbc-row-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rbc-month-view .rbc-row-content::-webkit-scrollbar-thumb {
+  background: rgba(76, 175, 80, 0.3);
+  border-radius: 2px;
+}
+
+.rbc-month-view .rbc-row-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(76, 175, 80, 0.5);
+}
