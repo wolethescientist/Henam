@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     smtp_use_ssl: bool = False
     email_from: Optional[str] = None
     app_name: str = "Henam Task Management"
-    frontend_url: str = "http://localhost:5173"
+    frontend_url: str = "https://henam.onrender.com"
     
     # File Upload Settings - Production Ready
     upload_base_dir: Optional[str] = None  # Will be set based on environment
@@ -75,13 +75,9 @@ class Settings(BaseSettings):
             # Development: Use local uploads directory in project
             return "uploads"
         else:
-            # Production: Use system directories
-            if platform.system() == "Windows":
-                # Windows: Use C:\uploads
-                return "C:\\uploads"
-            else:
-                # Linux/Mac: Use /var/uploads
-                return "/var/uploads"
+            # Production: Use /tmp/uploads (writable without root permissions)
+            return "/tmp/uploads"
 
 
 settings = Settings()
+

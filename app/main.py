@@ -67,7 +67,7 @@ app = FastAPI(
 )
 
 # Add request logging middleware
-@app.middleware("http")
+@app.middleware("https")
 async def log_requests(request: Request, call_next):
     """Log all incoming requests with timing."""
     start_time = time.time()
@@ -86,10 +86,15 @@ async def log_requests(request: Request, call_next):
     
     return response
 
+origins = [
+    "https://henam.onrender.com",  # frontend domain
+    "http://localhost:5173",       # for local dev (optional)
+]
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],  # Frontend URLs
+    allow_origins=origins,  # Frontend URLs
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],

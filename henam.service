@@ -1,0 +1,26 @@
+[Unit]
+Description=Henam FastAPI service
+After=network.target
+
+[Service]
+User=deploy
+Group=deploy
+WorkingDirectory=/home/deploy/henam-backend
+EnvironmentFile=/home/deploy/henam-backend/.env
+ExecStart=/home/deploy/henam-backend/.venv/bin/gunicorn \
+    -k uvicorn.workers.UvicornWorker \
+    -w 4 \
+    --bind 127.0.0.1:8000 \
+    app.main:app
+
+# Restart behavior
+Restart=always
+RestartSec=3
+
+# Logging
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=henam
+
+[Install]
+WantedBy=multi-user.target
