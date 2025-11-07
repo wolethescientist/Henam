@@ -182,7 +182,12 @@ function AppContent() {
                         />
                         <Route
                           path={ROUTES.RESET_PASSWORD}
-                          element={<ResetPasswordPage />}
+                          element={
+                            <Box sx={{ p: 4, textAlign: 'center' }}>
+                              <Typography variant="h4">Reset Password Page</Typography>
+                              <Typography>If you see this, routing works!</Typography>
+                            </Box>
+                          }
                         />
                         <Route
                           path="/"
