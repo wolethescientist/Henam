@@ -124,14 +124,24 @@ const LoginPage: React.FC = () => {
 
   const onSubmitForgotPassword = async (data: ForgotPasswordFormData) => {
     try {
+      // Close dialog immediately for better UX
+      setForgotPasswordOpen(false);
+      resetForgotPassword();
+      
+      // Show immediate feedback
+      addNotification({
+        type: 'info',
+        title: 'Sending Reset Email',
+        message: 'Please wait while we send the reset link to your email...',
+      });
+      
       await forgotPasswordMutation(data).unwrap();
+      
       addNotification({
         type: 'success',
         title: 'Reset Email Sent',
         message: 'If the email exists, a password reset link has been sent to your inbox.',
       });
-      setForgotPasswordOpen(false);
-      resetForgotPassword();
     } catch (error: any) {
       addNotification({
         type: 'error',

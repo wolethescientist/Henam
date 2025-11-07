@@ -117,7 +117,7 @@ def change_password(
 
 
 @router.post("/forgot-password")
-def forgot_password(
+async def forgot_password(
     request: ForgotPasswordRequest,
     db: Session = Depends(get_db)
 ):
@@ -155,23 +155,29 @@ def forgot_password(
     db.add(reset_token_record)
     db.commit()
     
-    # Send email
-    email_sent = email_service.send_password_reset_email(
-        user_email=user.email,
-        user_name=user.name,
-        reset_token=reset_token,
-        expires_in_minutes=30
-    )
+    # Send email asynchronously in background - don't wait for it
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
     
-    if not email_sent:
-        # If email fails, mark token as used to prevent abuse
-        reset_token_record.used = True
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to send reset email. Please try again later."
-        )
+    def send_email_background():
+        try:
+            email_service.send_password_reset_email(
+                user_email=user.email,
+                user_name=user.name,
+                reset_token=reset_token,
+                expires_in_minutes=30
+            )
+        except Exception as e:
+            # Log error but don't fail the request
+            import logging
+            logging.error(f"Failed to send password reset email to {user.email}: {e}")
     
+    # Execute email sending in background thread
+    loop = asyncio.get_event_loop()
+    executor = ThreadPoolExecutor(max_workers=1)
+    loop.run_in_executor(executor, send_email_background)
+    
+    # Return immediately without waiting for email
     return {"message": "If the email exists, a password reset link has been sent."}
 
 
