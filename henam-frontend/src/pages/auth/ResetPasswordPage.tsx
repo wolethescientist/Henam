@@ -14,9 +14,17 @@ import {
   CircularProgress,
   Snackbar,
 } from '@mui/material';
-import { useResetPasswordMutation } from '../../store/api/authApi';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ROUTES } from '../../constants';
+
+// Import the mutation hook with error handling
+let useResetPasswordMutation: any;
+try {
+  const authApi = require('../../store/api/authApi');
+  useResetPasswordMutation = authApi.useResetPasswordMutation;
+} catch (error) {
+  console.error('Failed to load authApi:', error);
+}
 
 const schema = yup.object({
   new_password: yup
@@ -37,7 +45,22 @@ type ResetPasswordFormData = {
 const ResetPasswordPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [resetPasswordMutation, { isLoading: isResettingPassword }] = useResetPasswordMutation();
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  
+  // Safe mutation hook usage
+  let resetPasswordMutation: any;
+  let isResettingPassword = false;
+  
+  try {
+    if (useResetPasswordMutation) {
+      [resetPasswordMutation, { isLoading: isResettingPassword }] = useResetPasswordMutation();
+    }
+  } catch (error) {
+    console.error('Failed to initialize mutation:', error);
+    setHasError(true);
+    setErrorMessage('Failed to initialize password reset. Please try again later.');
+  }
   
   const token = searchParams.get('token');
   const [isValidatingToken, setIsValidatingToken] = useState(true);
@@ -57,23 +80,27 @@ const ResetPasswordPage: React.FC = () => {
   });
 
   useEffect(() => {
-    // Validate token on component mount
-    if (!token) {
-      setSnackbar({
-        open: true,
-        message: 'No reset token provided. Please request a new password reset.',
-        severity: 'error',
-      });
-      setTimeout(() => {
-        navigate(ROUTES.LOGIN, { replace: true });
-      }, 2000);
-      return;
+    try {
+      // Validate token on component mount
+      if (!token) {
+        setSnackbar({
+          open: true,
+          message: 'No reset token provided. Please request a new password reset.',
+          severity: 'error',
+        });
+        setTimeout(() => {
+          navigate(ROUTES.LOGIN, { replace: true });
+        }, 2000);
+        return;
+      }
+      
+      setTokenValid(true);
+      setIsValidatingToken(false);
+    } catch (error) {
+      console.error('Error in useEffect:', error);
+      setHasError(true);
+      setErrorMessage('An error occurred while loading the page.');
     }
-    
-    // For now, we'll assume the token is valid if it exists
-    // In a real app, you might want to validate the token with the backend
-    setTokenValid(true);
-    setIsValidatingToken(false);
   }, [token, navigate]);
 
   const onSubmit = async (data: ResetPasswordFormData) => {
@@ -81,6 +108,15 @@ const ResetPasswordPage: React.FC = () => {
       setSnackbar({
         open: true,
         message: 'No reset token available.',
+        severity: 'error',
+      });
+      return;
+    }
+
+    if (!resetPasswordMutation) {
+      setSnackbar({
+        open: true,
+        message: 'Password reset is currently unavailable. Please try again later.',
         severity: 'error',
       });
       return;
@@ -103,6 +139,7 @@ const ResetPasswordPage: React.FC = () => {
         navigate(ROUTES.LOGIN, { replace: true });
       }, 2000);
     } catch (error: any) {
+      console.error('Reset password error:', error);
       setSnackbar({
         open: true,
         message: error?.data?.detail || 'Failed to reset password. The link may have expired.',
@@ -110,6 +147,37 @@ const ResetPasswordPage: React.FC = () => {
       });
     }
   };
+
+  // Error state
+  if (hasError) {
+    return (
+      <Box
+        sx={{
+          minHeight: '100vh',
+          background: 'linear-gradient(135deg, #2e7d32 0%, #4caf50 100%)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 2,
+        }}
+      >
+        <Container maxWidth="sm">
+          <Paper elevation={10} sx={{ borderRadius: 3, p: 4 }}>
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {errorMessage || 'An unexpected error occurred.'}
+            </Alert>
+            <Button
+              fullWidth
+              variant="contained"
+              onClick={() => navigate(ROUTES.LOGIN)}
+            >
+              Back to Login
+            </Button>
+          </Paper>
+        </Container>
+      </Box>
+    );
+  }
 
   if (isValidatingToken) {
     return (
