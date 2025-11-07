@@ -34,6 +34,7 @@ import NotFound from './pages/NotFound';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import AuthRedirect from './components/auth/AuthRedirect';
 import LoadingSpinner from './components/common/LoadingSpinner';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function AppContent() {
   const dispatch = useAppDispatch();
@@ -51,20 +52,20 @@ function AppContent() {
     const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
     if (navigation && navigation.type === 'reload') {
       console.log('Page refresh detected - invalidating stale cache tags');
-      
+
       // Instead of full reset, only invalidate potentially stale data
       // This prevents race conditions and preserves valid cached data
       dispatch(baseApi.util.invalidateTags(['Dashboard', 'FinancialSummary']));
-      
+
       // Add a timestamp for cache busting only if needed
       const lastRefresh = sessionStorage.getItem('last_refresh');
       const now = Date.now();
-      
+
       // Only force refresh if last refresh was more than 5 minutes ago
       if (!lastRefresh || (now - parseInt(lastRefresh)) > 300000) {
         sessionStorage.setItem('refresh_timestamp', now.toString());
         sessionStorage.setItem('last_refresh', now.toString());
-        
+
         // Remove timestamp after 30 seconds to restore normal caching
         setTimeout(() => {
           sessionStorage.removeItem('refresh_timestamp');
@@ -182,7 +183,11 @@ function AppContent() {
                         />
                         <Route
                           path={ROUTES.RESET_PASSWORD}
-                          element={<ResetPasswordPage />}
+                          element={
+                            <ErrorBoundary>
+                              <ResetPasswordPage />
+                            </ErrorBoundary>
+                          }
                         />
                         <Route
                           path="/"
