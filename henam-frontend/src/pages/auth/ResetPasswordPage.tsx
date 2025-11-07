@@ -17,8 +17,6 @@ import {
 import { useResetPasswordMutation } from '../../store/api/authApi';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ROUTES } from '../../constants';
-import Logo from '../../components/common/Logo';
-import PasswordStrengthIndicator from '../../components/common/PasswordStrengthIndicator';
 
 const schema = yup.object({
   new_password: yup
@@ -44,7 +42,6 @@ const ResetPasswordPage: React.FC = () => {
   const token = searchParams.get('token');
   const [isValidatingToken, setIsValidatingToken] = useState(true);
   const [tokenValid, setTokenValid] = useState(false);
-  const [newPassword, setNewPassword] = useState<string>('');
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false,
     message: '',
@@ -174,12 +171,20 @@ const ResetPasswordPage: React.FC = () => {
                 color: 'white',
               }}
             >
-              <Logo variant="text" size="large" color="white" />
+              <Typography 
+                variant="h4"
+                sx={{ 
+                  fontWeight: 'bold',
+                  mb: 1,
+                  fontSize: { xs: '1.5rem', sm: '2rem' }
+                }}
+              >
+                Henam
+              </Typography>
               <Typography 
                 variant="h6"
                 sx={{ 
-                  opacity: 0.9, 
-                  mt: 1,
+                  opacity: 0.9,
                   fontSize: { xs: '1rem', sm: '1.25rem' }
                 }}
               >
@@ -242,12 +247,20 @@ const ResetPasswordPage: React.FC = () => {
                 color: 'white',
               }}
             >
-              <Logo variant="text" size="large" color="white" />
+              <Typography 
+                variant="h4"
+                sx={{ 
+                  fontWeight: 'bold',
+                  mb: 1,
+                  fontSize: { xs: '1.5rem', sm: '2rem' }
+                }}
+              >
+                Henam
+              </Typography>
               <Typography 
                 variant="h6"
                 sx={{ 
-                  opacity: 0.9, 
-                  mt: 1,
+                  opacity: 0.9,
                   fontSize: { xs: '1rem', sm: '1.25rem' }
                 }}
               >
@@ -290,12 +303,7 @@ const ResetPasswordPage: React.FC = () => {
                   error={!!errors.new_password}
                   helperText={errors.new_password?.message}
                   sx={{ mb: 2 }}
-                  onChange={(e) => {
-                    setNewPassword(e.target.value);
-                    register('new_password').onChange(e);
-                  }}
                 />
-                <PasswordStrengthIndicator password={newPassword} />
                 <TextField
                   {...register('confirm_password')}
                   margin="normal"
