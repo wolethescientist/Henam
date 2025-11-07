@@ -8,19 +8,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import User
-import logging
 
-logger = logging.getLogger(__name__)
-
-# Initialize bcrypt context with explicit backend
-try:
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    # Force backend initialization
-    pwd_context.hash("test")
-except Exception as e:
-    logger.error(f"Failed to initialize bcrypt: {e}")
-    raise
-
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
 
