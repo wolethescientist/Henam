@@ -16,15 +16,7 @@ import {
 } from '@mui/material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ROUTES } from '../../constants';
-
-// Import the mutation hook with error handling
-let useResetPasswordMutation: any;
-try {
-  const authApi = require('../../store/api/authApi');
-  useResetPasswordMutation = authApi.useResetPasswordMutation;
-} catch (error) {
-  console.error('Failed to load authApi:', error);
-}
+import { useResetPasswordMutation } from '../../store/api/authApi';
 
 const schema = yup.object({
   new_password: yup
@@ -45,23 +37,8 @@ type ResetPasswordFormData = {
 const ResetPasswordPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [hasError, setHasError] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-  
-  // Safe mutation hook usage
-  let resetPasswordMutation: any;
-  let isResettingPassword = false;
-  
-  try {
-    if (useResetPasswordMutation) {
-      [resetPasswordMutation, { isLoading: isResettingPassword }] = useResetPasswordMutation();
-    }
-  } catch (error) {
-    console.error('Failed to initialize mutation:', error);
-    setHasError(true);
-    setErrorMessage('Failed to initialize password reset. Please try again later.');
-  }
-  
+  const [resetPasswordMutation, { isLoading: isResettingPassword }] = useResetPasswordMutation();
+
   const token = searchParams.get('token');
   const [isValidatingToken, setIsValidatingToken] = useState(true);
   const [tokenValid, setTokenValid] = useState(false);
@@ -80,27 +57,21 @@ const ResetPasswordPage: React.FC = () => {
   });
 
   useEffect(() => {
-    try {
-      // Validate token on component mount
-      if (!token) {
-        setSnackbar({
-          open: true,
-          message: 'No reset token provided. Please request a new password reset.',
-          severity: 'error',
-        });
-        setTimeout(() => {
-          navigate(ROUTES.LOGIN, { replace: true });
-        }, 2000);
-        return;
-      }
-      
-      setTokenValid(true);
-      setIsValidatingToken(false);
-    } catch (error) {
-      console.error('Error in useEffect:', error);
-      setHasError(true);
-      setErrorMessage('An error occurred while loading the page.');
+    // Validate token on component mount
+    if (!token) {
+      setSnackbar({
+        open: true,
+        message: 'No reset token provided. Please request a new password reset.',
+        severity: 'error',
+      });
+      setTimeout(() => {
+        navigate(ROUTES.LOGIN, { replace: true });
+      }, 2000);
+      return;
     }
+
+    setTokenValid(true);
+    setIsValidatingToken(false);
   }, [token, navigate]);
 
   const onSubmit = async (data: ResetPasswordFormData) => {
@@ -113,28 +84,19 @@ const ResetPasswordPage: React.FC = () => {
       return;
     }
 
-    if (!resetPasswordMutation) {
-      setSnackbar({
-        open: true,
-        message: 'Password reset is currently unavailable. Please try again later.',
-        severity: 'error',
-      });
-      return;
-    }
-
     try {
       await resetPasswordMutation({
         token,
         new_password: data.new_password,
         confirm_password: data.confirm_password,
       }).unwrap();
-      
+
       setSnackbar({
         open: true,
         message: 'Your password has been reset successfully. Redirecting to login...',
         severity: 'success',
       });
-      
+
       setTimeout(() => {
         navigate(ROUTES.LOGIN, { replace: true });
       }, 2000);
@@ -147,37 +109,6 @@ const ResetPasswordPage: React.FC = () => {
       });
     }
   };
-
-  // Error state
-  if (hasError) {
-    return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          background: 'linear-gradient(135deg, #2e7d32 0%, #4caf50 100%)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 2,
-        }}
-      >
-        <Container maxWidth="sm">
-          <Paper elevation={10} sx={{ borderRadius: 3, p: 4 }}>
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {errorMessage || 'An unexpected error occurred.'}
-            </Alert>
-            <Button
-              fullWidth
-              variant="contained"
-              onClick={() => navigate(ROUTES.LOGIN)}
-            >
-              Back to Login
-            </Button>
-          </Paper>
-        </Container>
-      </Box>
-    );
-  }
 
   if (isValidatingToken) {
     return (
@@ -239,9 +170,9 @@ const ResetPasswordPage: React.FC = () => {
                 color: 'white',
               }}
             >
-              <Typography 
+              <Typography
                 variant="h4"
-                sx={{ 
+                sx={{
                   fontWeight: 'bold',
                   mb: 1,
                   fontSize: { xs: '1.5rem', sm: '2rem' }
@@ -249,9 +180,9 @@ const ResetPasswordPage: React.FC = () => {
               >
                 Henam
               </Typography>
-              <Typography 
+              <Typography
                 variant="h6"
-                sx={{ 
+                sx={{
                   opacity: 0.9,
                   fontSize: { xs: '1rem', sm: '1.25rem' }
                 }}
@@ -315,9 +246,9 @@ const ResetPasswordPage: React.FC = () => {
                 color: 'white',
               }}
             >
-              <Typography 
+              <Typography
                 variant="h4"
-                sx={{ 
+                sx={{
                   fontWeight: 'bold',
                   mb: 1,
                   fontSize: { xs: '1.5rem', sm: '2rem' }
@@ -325,9 +256,9 @@ const ResetPasswordPage: React.FC = () => {
               >
                 Henam
               </Typography>
-              <Typography 
+              <Typography
                 variant="h6"
-                sx={{ 
+                sx={{
                   opacity: 0.9,
                   fontSize: { xs: '1rem', sm: '1.25rem' }
                 }}
@@ -337,20 +268,20 @@ const ResetPasswordPage: React.FC = () => {
             </Box>
 
             <CardContent sx={{ padding: { xs: 3, sm: 4 } }}>
-              <Typography 
+              <Typography
                 variant="h5"
-                component="h2" 
-                gutterBottom 
-                textAlign="center" 
+                component="h2"
+                gutterBottom
+                textAlign="center"
                 color="primary"
                 sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}
               >
                 Create New Password
               </Typography>
-              <Typography 
-                variant="body2" 
-                color="text.secondary" 
-                textAlign="center" 
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                textAlign="center"
                 sx={{ mb: 3 }}
               >
                 Enter your new password below
@@ -428,15 +359,15 @@ const ResetPasswordPage: React.FC = () => {
           </Paper>
         </Container>
       </Box>
-      
+
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       >
-        <Alert 
-          onClose={() => setSnackbar({ ...snackbar, open: false })} 
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
           severity={snackbar.severity}
           sx={{ width: '100%' }}
         >
