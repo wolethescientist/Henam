@@ -87,7 +87,8 @@ async def log_requests(request: Request, call_next):
     return response
 
 origins = [
-    "https://henam.onrender.com",  # frontend domain
+    "https://henamfacility.com.ng",
+    "https://www.henamfacility.com.ng",  # frontend domain
     "http://localhost:5173",       # for local dev (optional)
 ]
 
