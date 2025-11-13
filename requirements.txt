@@ -27,6 +27,7 @@ reportlab
 
 # Excel Generation
 openpyxl
+pandas
 
 # Data Visualization
 matplotlib

@@ -271,52 +271,61 @@ def export_expenses_excel(
     current_user: User = Depends(get_current_user)
 ):
     """Export expenses to Excel file."""
-    from sqlalchemy.orm import joinedload
-    query = db.query(Expense).options(
-        joinedload(Expense.created_by)
-    )
-    
-    # Apply filters
-    if start_date:
-        query = query.filter(Expense.date >= start_date)
-    if end_date:
-        query = query.filter(Expense.date <= end_date)
-    if category:
-        query = query.filter(Expense.category.ilike(f"%{category}%"))
-    
-    expenses = query.order_by(Expense.date.desc()).all()
-    
-    # Create DataFrame
-    data = []
-    for expense in expenses:
-        data.append({
-            'ID': expense.id,
-            'Title': expense.title,
-            'Category': expense.category,
-            'Amount': expense.amount,
-            'Date': expense.date.strftime('%Y-%m-%d'),
-            'Description': expense.description or '',
-            'Created By': expense.created_by.name if expense.created_by else '',
-            'Created At': expense.created_at.strftime('%Y-%m-%d %H:%M:%S')
-        })
-    
-    df = pd.DataFrame(data)
-    
-    # Create Excel file in memory
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, sheet_name='Expenses', index=False)
-    
-    output.seek(0)
-    
-    # Generate filename
-    filename = f"expenses_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    
-    return Response(
-        content=output.getvalue(),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
-    )
+    try:
+        from sqlalchemy.orm import joinedload
+        query = db.query(Expense).options(
+            joinedload(Expense.created_by)
+        )
+        
+        # Apply filters
+        if start_date:
+            query = query.filter(Expense.date >= start_date)
+        if end_date:
+            query = query.filter(Expense.date <= end_date)
+        if category:
+            query = query.filter(Expense.category.ilike(f"%{category}%"))
+        
+        expenses = query.order_by(Expense.date.desc()).all()
+        
+        # Create DataFrame
+        data = []
+        for expense in expenses:
+            data.append({
+                'ID': expense.id,
+                'Title': expense.title,
+                'Category': expense.category,
+                'Amount': expense.amount,
+                'Date': expense.date.strftime('%Y-%m-%d') if expense.date else '',
+                'Description': expense.description or '',
+                'Created By': expense.created_by.name if expense.created_by else '',
+                'Created At': expense.created_at.strftime('%Y-%m-%d %H:%M:%S') if expense.created_at else ''
+            })
+        
+        df = pd.DataFrame(data)
+        
+        # Create Excel file in memory
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Expenses', index=False)
+        
+        output.seek(0)
+        
+        # Generate filename
+        filename = f"expenses_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        return Response(
+            content=output.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        print(f"Error exporting expenses: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to export expenses: {str(e)}"
+        )
 
 
 @router.get("/stats/summary")
