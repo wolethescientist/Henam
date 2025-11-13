@@ -119,8 +119,11 @@ async def get_expenses(
     offset = (page - 1) * limit
     expenses = query.order_by(Expense.date.desc()).offset(offset).limit(limit).all()
     
+    # Convert ORM objects to Pydantic models
+    expense_responses = [ExpenseResponse.model_validate(expense) for expense in expenses]
+    
     return PaginatedResponse(
-        items=expenses,
+        items=expense_responses,
         total_count=total_count,
         page=page,
         limit=limit,
