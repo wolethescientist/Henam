@@ -71,9 +71,7 @@ export const expensesApi = baseApi.injectEndpoints({
       query: (params) => ({
         url: '/expenses/export/excel',
         params,
-        responseType: 'blob',
       }),
-      invalidatesTags: ['Expense'],
     }),
     getExpensesSummary: builder.query<{
       total_amount: number;
