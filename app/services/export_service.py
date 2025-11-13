@@ -1116,7 +1116,7 @@ def generate_invoice_pdf_OLD(invoice, db) -> BytesIO:
 
 
 def generate_invoice_pdf(invoice, db) -> BytesIO:
-    """Generate PDF invoice matching the exact client design - single page, compact layout."""
+    """Generate PDF invoice matching the exact client design."""
     from reportlab.lib.units import inch
     from reportlab.platypus import Image
     import os
@@ -1124,25 +1124,25 @@ def generate_invoice_pdf(invoice, db) -> BytesIO:
     output = BytesIO()
     doc = SimpleDocTemplate(output, pagesize=letter,
                           rightMargin=50, leftMargin=50,
-                          topMargin=40, bottomMargin=40)
+                          topMargin=50, bottomMargin=50)
     elements = []
     styles = getSampleStyleSheet()
     
-    # Compact styles for single-page layout
-    small_style = ParagraphStyle(
-        'Small',
+    # Normal readable styles
+    normal_style = ParagraphStyle(
+        'Normal',
         parent=styles['Normal'],
-        fontSize=9,
-        leading=11,
+        fontSize=10,
+        leading=14,
         textColor=colors.black
     )
     
-    small_bold_style = ParagraphStyle(
-        'SmallBold',
+    bold_style = ParagraphStyle(
+        'Bold',
         parent=styles['Normal'],
-        fontSize=9,
+        fontSize=10,
         fontName='Helvetica-Bold',
-        leading=11,
+        leading=14,
         textColor=colors.black
     )
     
@@ -1157,7 +1157,7 @@ def generate_invoice_pdf(invoice, db) -> BytesIO:
     # Header: Logo (left) and Company Info (right)
     if logo_path:
         try:
-            logo = Image(logo_path, width=1.5*inch, height=0.5*inch)
+            logo = Image(logo_path, width=1.8*inch, height=0.6*inch)
             
             company_info = Paragraph(
                 "<para align='right'>"
@@ -1170,7 +1170,7 @@ def generate_invoice_pdf(invoice, db) -> BytesIO:
                 "henamcleaning@yahoo.com<br/>"
                 "T/N: 3176322-4-0001 : RC: 7612266"
                 "</para>",
-                small_style
+                normal_style
             )
             
             header_table = Table([[logo, company_info]], colWidths=[3*inch, 4*inch])
@@ -1183,7 +1183,7 @@ def generate_invoice_pdf(invoice, db) -> BytesIO:
         except Exception as e:
             logger.error(f"Error adding logo: {e}")
     
-    elements.append(Spacer(1, 15))
+    elements.append(Spacer(1, 25))
     
     # Get job info if linked
     from app.models import Job
@@ -1196,10 +1196,10 @@ def generate_invoice_pdf(invoice, db) -> BytesIO:
     
     # Bill To section with Invoice # and Date
     bill_to_data = [
-        [Paragraph("<b>BILL TO</b>", small_bold_style), "", 
-         Paragraph("<b>INVOICE #</b>", small_bold_style), str(invoice.invoice_number)],
-        [Paragraph(client_name, small_style), "", 
-         Paragraph("<b>Date</b>", small_bold_style), invoice.created_at.strftime('%d %b %Y')]
+        [Paragraph("<b>BILL TO</b>", bold_style), "", 
+         Paragraph("<b>INVOICE #</b>", bold_style), str(invoice.invoice_number)],
+        [Paragraph(client_name, normal_style), "", 
+         Paragraph("<b>Date</b>", bold_style), invoice.created_at.strftime('%d %b %Y')]
     ]
     
     bill_table = Table(bill_to_data, colWidths=[1.5*inch, 2*inch, 1.5*inch, 2*inch])
@@ -1207,19 +1207,19 @@ def generate_invoice_pdf(invoice, db) -> BytesIO:
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#E8E8E8')),
         ('ALIGN', (0, 0), (1, -1), 'LEFT'),
         ('ALIGN', (2, 0), (-1, -1), 'LEFT'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ('TOPPADDING', (0, 0), (-1, -1), 10),
     ]))
     elements.append(bill_table)
-    elements.append(Spacer(1, 12))
+    elements.append(Spacer(1, 20))
     
     # Items table header
     items_header = [[
-        Paragraph("<b>Item</b>", small_bold_style),
-        Paragraph("<b>Quantity</b>", small_bold_style),
-        Paragraph("<b>Price</b>", small_bold_style),
-        Paragraph("<b>Amount</b>", small_bold_style)
+        Paragraph("<b>Item</b>", bold_style),
+        Paragraph("<b>Quantity</b>", bold_style),
+        Paragraph("<b>Price</b>", bold_style),
+        Paragraph("<b>Amount</b>", bold_style)
     ]]
     
     items_table_header = Table(items_header, colWidths=[3.5*inch, 1*inch, 1.25*inch, 1.25*inch])
@@ -1227,9 +1227,9 @@ def generate_invoice_pdf(invoice, db) -> BytesIO:
         ('BACKGROUND', (0, 0), (-1, -1), colors.white),
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
         ('LINEBELOW', (0, 0), (-1, -1), 1, colors.HexColor('#CCCCCC'))
     ]))
     elements.append(items_table_header)
@@ -1244,7 +1244,7 @@ def generate_invoice_pdf(invoice, db) -> BytesIO:
         item_text += f"<br/>{service_description}"
     
     items_data = [[
-        Paragraph(item_text, small_style),
+        Paragraph(item_text, normal_style),
         "1",
         f"₦{invoice.amount:,.2f}",
         f"₦{invoice.amount:,.2f}"
@@ -1254,13 +1254,13 @@ def generate_invoice_pdf(invoice, db) -> BytesIO:
     items_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ('TOPPADDING', (0, 0), (-1, -1), 12),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
     ]))
     elements.append(items_table)
-    elements.append(Spacer(1, 15))
+    elements.append(Spacer(1, 25))
     
     # Payment Instructions (left) and Totals (right)
     payment_info = Paragraph(
@@ -1271,7 +1271,7 @@ def generate_invoice_pdf(invoice, db) -> BytesIO:
         "Henam Cleaning Services<br/>"
         "Wema Bank<br/>"
         "0123104577",
-        small_style
+        normal_style
     )
     
     totals_data = [
@@ -1279,47 +1279,47 @@ def generate_invoice_pdf(invoice, db) -> BytesIO:
         ["Total", f"₦{invoice.amount:,.2f}"]
     ]
     
-    totals_table = Table(totals_data, colWidths=[1.25*inch, 1.25*inch])
+    totals_table = Table(totals_data, colWidths=[1.5*inch, 1.5*inch])
     totals_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica'),
         ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
     ]))
     
-    payment_layout = Table([[payment_info, totals_table]], colWidths=[4.5*inch, 2.5*inch])
+    payment_layout = Table([[payment_info, totals_table]], colWidths=[4*inch, 3*inch])
     payment_layout.setStyle(TableStyle([
         ('ALIGN', (0, 0), (0, 0), 'LEFT'),
         ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
     ]))
     elements.append(payment_layout)
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 30))
     
     # Amount Due box
     amount_due_style = ParagraphStyle(
         'AmountDue',
         parent=styles['Normal'],
-        fontSize=14,
+        fontSize=16,
         fontName='Helvetica-Bold',
         textColor=colors.black
     )
     
     amount_due_data = [[
-        Paragraph("Amount due", small_style),
+        Paragraph("Amount due", normal_style),
         Paragraph(f"₦{invoice.pending_amount:,.2f}", amount_due_style)
     ]]
     
-    amount_due_table = Table(amount_due_data, colWidths=[4.5*inch, 2.5*inch])
+    amount_due_table = Table(amount_due_data, colWidths=[4*inch, 3*inch])
     amount_due_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#E8E8E8')),
         ('ALIGN', (0, 0), (0, 0), 'LEFT'),
         ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ('TOPPADDING', (0, 0), (-1, -1), 12),
     ]))
     elements.append(amount_due_table)
     
