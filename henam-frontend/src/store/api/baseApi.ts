@@ -1,17 +1,16 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolkit/query';
 
 const baseUrl = import.meta.env.VITE_API_URL || 'https://henam.linkpc.net';
 
-export const baseApi = createApi({
-  reducerPath: 'baseApi',
-  // Keep data cached for better UX and reduce API calls
-  keepUnusedDataFor: 600, // Keep unused data for 10 minutes (increased for stability)
-  refetchOnMountOrArgChange: 60, // Only refetch if data is older than 1 minute (reduced for freshness)
-  refetchOnFocus: false, // Don't refetch when window gains focus
-  refetchOnReconnect: false, // Don't auto-refetch on reconnect to prevent spam
-  baseQuery: fetchBaseQuery({
+// Custom base query with timeout support
+const baseQueryWithTimeout: BaseQueryFn<
+  string | FetchArgs,
+  unknown,
+  FetchBaseQueryError
+> = async (args, api, extraOptions) => {
+  const baseQuery = fetchBaseQuery({
     baseUrl: baseUrl,
-    timeout: 30000, // 30 second timeout to prevent long waits
     prepareHeaders: (headers, { getState, endpoint }) => {
       const state = getState() as any;
       const token = state?.auth?.accessToken || localStorage.getItem('access_token');
@@ -110,7 +109,42 @@ export const baseApi = createApi({
         return await response.text();
       }
     },
-  }),
+  });
+
+  // Create timeout promise
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      reject(new Error('Request timeout'));
+    }, 30000); // 30 second timeout
+  });
+
+  try {
+    // Race between the actual request and timeout
+    return await Promise.race([
+      baseQuery(args, api, extraOptions),
+      timeoutPromise
+    ]);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Request timeout') {
+      return {
+        error: {
+          status: 'TIMEOUT_ERROR',
+          error: 'Request timed out after 30 seconds',
+        } as FetchBaseQueryError,
+      };
+    }
+    throw error;
+  }
+};
+
+export const baseApi = createApi({
+  reducerPath: 'baseApi',
+  // Keep data cached for better UX and reduce API calls
+  keepUnusedDataFor: 600, // Keep unused data for 10 minutes (increased for stability)
+  refetchOnMountOrArgChange: 60, // Only refetch if data is older than 1 minute (reduced for freshness)
+  refetchOnFocus: false, // Don't refetch when window gains focus
+  refetchOnReconnect: false, // Don't auto-refetch on reconnect to prevent spam
+  baseQuery: baseQueryWithTimeout,
   tagTypes: [
     'User',
     'Team',
