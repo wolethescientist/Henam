@@ -176,7 +176,7 @@ class ExportService:
         for transaction in transactions:
             table_data.append([
                 transaction.get("category", ""),
-                f"₦{transaction.get('amount', 0):,.2f}",
+                f"NGN {transaction.get('amount', 0):,.2f}",
                 transaction.get("type", ""),
                 transaction.get("date", "")
             ])
@@ -322,8 +322,8 @@ class ExportService:
         items_data = [[
             Paragraph(item_text, small_style),
             "1",
-            f"₦{invoice_data.get('amount', 0):,.2f}",
-            f"₦{invoice_data.get('amount', 0):,.2f}"
+            f"NGN {invoice_data.get('amount', 0):,.2f}",
+            f"NGN {invoice_data.get('amount', 0):,.2f}"
         ]]
         
         items_table = Table(items_data, colWidths=[3.5*inch, 1*inch, 1.25*inch, 1.25*inch])
@@ -351,8 +351,8 @@ class ExportService:
         )
         
         totals_data = [
-            ["Subtotal", f"₦{invoice_data.get('amount', 0):,.2f}"],
-            ["Total", f"₦{invoice_data.get('amount', 0):,.2f}"]
+            ["Subtotal", f"NGN {invoice_data.get('amount', 0):,.2f}"],
+            ["Total", f"NGN {invoice_data.get('amount', 0):,.2f}"]
         ]
         
         totals_table = Table(totals_data, colWidths=[1.25*inch, 1.25*inch])
@@ -379,7 +379,7 @@ class ExportService:
         # Amount due box - compact
         amount_due_data = [[
             Paragraph("Amount due", small_style),
-            Paragraph(f"<b>₦{invoice_data.get('pending_amount', invoice_data.get('amount', 0)):,.2f}</b>", 
+            Paragraph(f"<b>NGN {invoice_data.get('pending_amount', invoice_data.get('amount', 0)):,.2f}</b>", 
                      ParagraphStyle('AmountDue', parent=self.styles['Normal'], fontSize=14, fontName='Helvetica-Bold'))
         ]]
         
@@ -1121,8 +1121,8 @@ def generate_invoice_pdf(invoice, db) -> BytesIO:
     from reportlab.platypus import Image
     import os
     
-    # Naira symbol
-    NAIRA = "₦"
+    # Naira symbol - using NGN as the symbol doesn't render properly in PDFs
+    NAIRA = "NGN "
     
     output = BytesIO()
     doc = SimpleDocTemplate(output, pagesize=letter,
