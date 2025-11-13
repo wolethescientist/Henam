@@ -1114,8 +1114,8 @@ def generate_invoice_pdf_OLD(invoice, db) -> BytesIO:
     output.seek(0)
     return output
 
-def gen
-erate_invoice_pdf(invoice, db) -> BytesIO:
+
+def generate_invoice_pdf(invoice, db) -> BytesIO:
     """Generate PDF invoice matching the exact client design - single page, compact layout."""
     from reportlab.lib.units import inch
     from reportlab.platypus import Image
