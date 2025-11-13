@@ -1121,8 +1121,8 @@ def generate_invoice_pdf(invoice, db) -> BytesIO:
     from reportlab.platypus import Image
     import os
     
-    # Naira symbol - using Unicode character
-    NAIRA = "₦"  # Unicode U+20A6
+    # Naira symbol
+    NAIRA = "₦"
     
     output = BytesIO()
     doc = SimpleDocTemplate(output, pagesize=letter,
