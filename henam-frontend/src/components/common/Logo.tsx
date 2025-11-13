@@ -7,10 +7,10 @@ interface LogoProps {
   color?: 'primary' | 'white' | 'inherit';
 }
 
-const Logo: React.FC<LogoProps> = ({ 
-  variant = 'full', 
-  size = 'medium', 
-  color = 'primary' 
+const Logo: React.FC<LogoProps> = ({
+  variant = 'full',
+  size = 'medium',
+  color = 'primary'
 }) => {
   const getSize = () => {
     if (typeof size === 'object') {
@@ -29,7 +29,7 @@ const Logo: React.FC<LogoProps> = ({
       };
       return responsiveSize;
     }
-    
+
     switch (size) {
       case 'small':
         return { fontSize: '1.2rem', iconSize: 24 };
@@ -95,7 +95,7 @@ const Logo: React.FC<LogoProps> = ({
     const apiUrl = import.meta.env.VITE_API_URL || 'https://henam.linkpc.net';
     const [logoSrc, setLogoSrc] = React.useState(`${apiUrl}/uploads/company_logo/henam_logo.jpg`);
     const [showFallback, setShowFallback] = React.useState(false);
-    
+
     const handleError = () => {
       console.error('Failed to load logo from:', logoSrc);
       // Try local public folder as fallback
@@ -108,7 +108,7 @@ const Logo: React.FC<LogoProps> = ({
         setShowFallback(true);
       }
     };
-    
+
     if (showFallback) {
       return (
         <Typography
@@ -123,7 +123,7 @@ const Logo: React.FC<LogoProps> = ({
         </Typography>
       );
     }
-    
+
     return (
       <Box
         component="img"
