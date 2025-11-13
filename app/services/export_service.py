@@ -1121,6 +1121,9 @@ def generate_invoice_pdf(invoice, db) -> BytesIO:
     from reportlab.platypus import Image
     import os
     
+    # Naira symbol - using Unicode character
+    NAIRA = "₦"  # Unicode U+20A6
+    
     output = BytesIO()
     doc = SimpleDocTemplate(output, pagesize=letter,
                           rightMargin=50, leftMargin=50,
@@ -1246,8 +1249,8 @@ def generate_invoice_pdf(invoice, db) -> BytesIO:
     items_data = [[
         Paragraph(item_text, normal_style),
         "1",
-        f"₦{invoice.amount:,.2f}",
-        f"₦{invoice.amount:,.2f}"
+        f"{NAIRA}{invoice.amount:,.2f}",
+        f"{NAIRA}{invoice.amount:,.2f}"
     ]]
     
     items_table = Table(items_data, colWidths=[3.5*inch, 1*inch, 1.25*inch, 1.25*inch])
@@ -1275,8 +1278,8 @@ def generate_invoice_pdf(invoice, db) -> BytesIO:
     )
     
     totals_data = [
-        ["Subtotal", f"₦{invoice.amount:,.2f}"],
-        ["Total", f"₦{invoice.amount:,.2f}"]
+        ["Subtotal", f"{NAIRA}{invoice.amount:,.2f}"],
+        ["Total", f"{NAIRA}{invoice.amount:,.2f}"]
     ]
     
     totals_table = Table(totals_data, colWidths=[1.5*inch, 1.5*inch])
@@ -1309,7 +1312,7 @@ def generate_invoice_pdf(invoice, db) -> BytesIO:
     
     amount_due_data = [[
         Paragraph("Amount due", normal_style),
-        Paragraph(f"₦{invoice.pending_amount:,.2f}", amount_due_style)
+        Paragraph(f"{NAIRA}{invoice.pending_amount:,.2f}", amount_due_style)
     ]]
     
     amount_due_table = Table(amount_due_data, colWidths=[4*inch, 3*inch])
