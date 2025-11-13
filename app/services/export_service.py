@@ -207,39 +207,188 @@ class ExportService:
         return output
     
     def export_invoice_to_pdf(self, invoice_data: Dict[str, Any]) -> BytesIO:
-        """Export invoice data to PDF format."""
+        """Export invoice data to PDF format with improved design."""
         output = BytesIO()
-        doc = SimpleDocTemplate(output, pagesize=letter)
+        doc = SimpleDocTemplate(output, pagesize=letter,
+                              rightMargin=50, leftMargin=50,
+                              topMargin=50, bottomMargin=50)
         elements = []
         
-        # Title
-        title = Paragraph("Invoice", self.styles['Title'])
-        elements.append(title)
-        elements.append(Spacer(1, 12))
+        # Custom styles
+        title_style = ParagraphStyle(
+            'InvoiceTitle',
+            parent=self.styles['Title'],
+            fontSize=20,
+            textColor=colors.HexColor('#2E86AB'),
+            fontName='Helvetica-Bold',
+            alignment=2  # Right alignment
+        )
         
-        # Invoice details
-        invoice_details = [
-            ["Invoice ID", str(invoice_data.get("id", ""))],
-            ["Job", invoice_data.get("job_title", "")],
-            ["Client", invoice_data.get("client", "")],
-            ["Amount", f"₦{invoice_data.get('amount', 0):,.2f}"],
-            ["Paid Amount", f"₦{invoice_data.get('paid_amount', 0):,.2f}"],
-            ["Pending Amount", f"₦{invoice_data.get('pending_amount', 0):,.2f}"],
-            ["Due Date", str(invoice_data.get('due_date', ""))],
-            ["Status", invoice_data.get('status', "")]
+        company_style = ParagraphStyle(
+            'CompanyName',
+            parent=self.styles['Normal'],
+            fontSize=14,
+            fontName='Helvetica-Bold',
+            textColor=colors.HexColor('#2E86AB')
+        )
+        
+        # Try to add logo
+        logo_path = None
+        for ext in ['.jpg', '.jpeg', '.png']:
+            test_path = f"uploads/company_logo/henam_logo{ext}"
+            if os.path.exists(test_path):
+                logo_path = test_path
+                break
+        
+        # Header with logo and company info
+        header_data = []
+        if logo_path:
+            try:
+                logo = Image(logo_path, width=2*inch, height=0.7*inch)
+                company_info = Paragraph(
+                    "<b>HENAM FACILITY MANAGEMENT LTD</b><br/>"
+                    "Dawaki, Abuja<br/>"
+                    "Abuja FCT<br/>"
+                    "NG<br/>"
+                    "09053121695<br/>"
+                    "henamcleaning@yahoo.com<br/>"
+                    "T/N: 3176322-4-0001 : RC: 7612266",
+                    self.styles['Normal']
+                )
+                invoice_title = Paragraph("INVOICE", title_style)
+                
+                header_table = Table([[logo, company_info, invoice_title]], 
+                                   colWidths=[2.5*inch, 2.5*inch, 2*inch])
+                header_table.setStyle(TableStyle([
+                    ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+                    ('ALIGN', (1, 0), (1, 0), 'CENTER'),
+                    ('ALIGN', (2, 0), (2, 0), 'RIGHT'),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ]))
+                elements.append(header_table)
+            except Exception as e:
+                logger.error(f"Error adding logo to invoice: {e}")
+                # Fallback without logo
+                title = Paragraph("INVOICE", title_style)
+                elements.append(title)
+        else:
+            title = Paragraph("INVOICE", title_style)
+            elements.append(title)
+        
+        elements.append(Spacer(1, 20))
+        
+        # Bill To and Invoice Info section
+        bill_to_data = [
+            [Paragraph("<b>BILL TO</b>", self.styles['Normal']), 
+             Paragraph(f"<b>INVOICE #</b>", self.styles['Normal']), 
+             str(invoice_data.get("id", ""))],
+            [invoice_data.get("client", "Client"), 
+             Paragraph("<b>Date</b>", self.styles['Normal']), 
+             str(invoice_data.get('created_at', ""))[:10]]
         ]
         
-        # Create table
-        table = Table(invoice_details)
-        table.setStyle(TableStyle([
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        bill_table = Table(bill_to_data, colWidths=[3*inch, 1.5*inch, 2.5*inch])
+        bill_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E8E8E8')),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#CCCCCC'))
+        ]))
+        elements.append(bill_table)
+        elements.append(Spacer(1, 20))
+        
+        # Invoice items table
+        items_data = [
+            [Paragraph("<b>Item</b>", self.styles['Normal']), 
+             Paragraph("<b>Quantity</b>", self.styles['Normal']), 
+             Paragraph("<b>Price</b>", self.styles['Normal']), 
+             Paragraph("<b>Amount</b>", self.styles['Normal'])]
+        ]
+        
+        # Add job details as line item
+        job_title = invoice_data.get("job_title", "Service")
+        items_data.append([
+            job_title,
+            "1",
+            f"₦{invoice_data.get('amount', 0):,.2f}",
+            f"₦{invoice_data.get('amount', 0):,.2f}"
+        ])
+        
+        items_table = Table(items_data, colWidths=[3*inch, 1*inch, 1.5*inch, 1.5*inch])
+        items_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E8E8E8')),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#CCCCCC'))
+        ]))
+        elements.append(items_table)
+        elements.append(Spacer(1, 10))
+        
+        # Payment instructions and totals
+        payment_info = Paragraph(
+            "<b>Payment Instructions</b><br/><br/>"
+            "Henam Facility Management Limited<br/>"
+            "Access Bank<br/>"
+            "1883625366<br/><br/>"
+            "Henam Cleaning Services<br/>"
+            "Wema Bank<br/>"
+            "0123104577",
+            self.styles['Normal']
+        )
+        
+        totals_data = [
+            ["Subtotal", f"₦{invoice_data.get('amount', 0):,.2f}"],
+            ["Total", f"₦{invoice_data.get('amount', 0):,.2f}"]
+        ]
+        
+        totals_table = Table(totals_data, colWidths=[1.5*inch, 1.5*inch])
+        totals_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
             ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 12),
+            ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
         ]))
         
-        elements.append(table)
+        # Create layout for payment info and totals
+        payment_layout = Table([[payment_info, totals_table]], 
+                              colWidths=[3.5*inch, 3*inch])
+        payment_layout.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+            ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]))
+        elements.append(payment_layout)
+        elements.append(Spacer(1, 20))
+        
+        # Amount due box
+        amount_due_data = [[
+            Paragraph("<b>Amount due</b>", self.styles['Normal']),
+            Paragraph(f"<b>₦{invoice_data.get('pending_amount', invoice_data.get('amount', 0)):,.2f}</b>", 
+                     ParagraphStyle('AmountDue', parent=self.styles['Normal'], fontSize=16, fontName='Helvetica-Bold'))
+        ]]
+        
+        amount_due_table = Table(amount_due_data, colWidths=[4.5*inch, 2.5*inch])
+        amount_due_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#E8E8E8')),
+            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+            ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+            ('FONTSIZE', (0, 0), (-1, -1), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+            ('TOPPADDING', (0, 0), (-1, -1), 12),
+        ]))
+        elements.append(amount_due_table)
+        
+        # Build PDF
         doc.build(elements)
         output.seek(0)
         return output

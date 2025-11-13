@@ -91,11 +91,45 @@ const Logo: React.FC<LogoProps> = ({
 
   if (variant === 'image') {
     const imageSize = typeof sizeConfig.iconSize === 'object' ? sizeConfig.iconSize : sizeConfig.iconSize;
+    // Use the backend API URL for logo (where uploads are served from)
+    const apiUrl = import.meta.env.VITE_API_URL || 'https://henam.linkpc.net';
+    const [logoSrc, setLogoSrc] = React.useState(`${apiUrl}/uploads/company_logo/henam_logo.jpg`);
+    const [showFallback, setShowFallback] = React.useState(false);
+    
+    const handleError = () => {
+      console.error('Failed to load logo from:', logoSrc);
+      // Try local public folder as fallback
+      if (logoSrc.includes('/uploads/')) {
+        console.log('Trying fallback logo from public folder');
+        setLogoSrc('/henam_logo.jpg');
+      } else {
+        // If both fail, show text fallback
+        console.log('All logo sources failed, showing text fallback');
+        setShowFallback(true);
+      }
+    };
+    
+    if (showFallback) {
+      return (
+        <Typography
+          variant="h4"
+          sx={{
+            color: 'primary.main',
+            fontWeight: 'bold',
+            fontSize: typeof sizeConfig.fontSize === 'object' ? sizeConfig.fontSize : sizeConfig.fontSize,
+          }}
+        >
+          HENAM
+        </Typography>
+      );
+    }
+    
     return (
       <Box
         component="img"
-        src="/uploads/company_logo/henam_logo.jpg"
+        src={logoSrc}
         alt="Henam Logo"
+        onError={handleError}
         sx={{
           height: imageSize,
           width: 'auto',

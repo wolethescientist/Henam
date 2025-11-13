@@ -34,6 +34,9 @@ desktop.ini
 
 # Uploads (user-generated content)
 uploads/
+# But keep the company logo
+!uploads/company_logo/
+!uploads/company_logo/henam_logo.jpg
 
 # Logs
 *.log
