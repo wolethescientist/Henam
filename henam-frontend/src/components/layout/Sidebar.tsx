@@ -25,7 +25,8 @@ import {
   Notifications,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAppSelector } from '../../hooks/redux';
+import { useAppSelector, useAppDispatch } from '../../hooks/redux';
+import { setSidebarOpen } from '../../store/slices/uiSlice';
 import { NAVIGATION_ITEMS, API_BASE_URL } from '../../constants';
 import type { RootStateType } from '../../store';
 import Logo from '../common/Logo';
@@ -41,6 +42,14 @@ const Sidebar: React.FC = () => {
   const location = useLocation();
   const { sidebarOpen } = useAppSelector((state: RootStateType) => state.ui);
   const { user } = useAppSelector((state: RootStateType) => state.auth);
+  const dispatch = useAppDispatch();
+
+  // Close sidebar by default on mobile
+  React.useEffect(() => {
+    if (isMobile && sidebarOpen) {
+      dispatch(setSidebarOpen(false));
+    }
+  }, [isMobile, dispatch]);
 
   const iconMap: Record<string, React.ReactElement> = {
     Dashboard: <Dashboard />,
@@ -55,6 +64,10 @@ const Sidebar: React.FC = () => {
 
   const handleNavigation = (path: string) => {
     navigate(path);
+    // Close sidebar on mobile after navigation
+    if (isMobile) {
+      dispatch(setSidebarOpen(false));
+    }
   };
 
   const isActiveRoute = (path: string) => {
@@ -261,7 +274,7 @@ const Sidebar: React.FC = () => {
     <Drawer
       variant={isMobile ? 'temporary' : 'permanent'}
       open={isMobile ? sidebarOpen : true}
-      onClose={isMobile ? () => {} : undefined}
+      onClose={isMobile ? () => dispatch(setSidebarOpen(false)) : undefined}
       sx={{
         width: isMobile ? drawerWidth : (sidebarOpen ? drawerWidth : collapsedWidth),
         flexShrink: 0,
