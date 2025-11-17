@@ -495,7 +495,7 @@ const OptimizedAdminDashboardPage: React.FC = () => {
             <Box sx={{ p: { xs: 2, sm: 3 }, borderBottom: 1, borderColor: 'divider' }}>
               <Box sx={{ 
                 display: 'flex', 
-                alignItems: { xs: 'flex-start', sm: 'center' },
+                alignItems: { xs: 'center', sm: 'center' },
                 flexDirection: { xs: 'column', sm: 'row' },
                 mb: 2,
                 gap: { xs: 2, sm: 0 }
@@ -509,7 +509,9 @@ const OptimizedAdminDashboardPage: React.FC = () => {
                     backgroundClip: 'text',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
-                    fontSize: { xs: '1.1rem', sm: '1.5rem' }
+                    fontSize: { xs: '1.1rem', sm: '1.5rem' },
+                    textAlign: { xs: 'center', sm: 'left' },
+                    width: { xs: '100%', sm: 'auto' }
                   }}
                 >
                   📊 Recent Jobs
@@ -519,24 +521,32 @@ const OptimizedAdminDashboardPage: React.FC = () => {
                   display: 'flex', 
                   alignItems: 'center', 
                   gap: 2,
-                  flexDirection: { xs: 'column', sm: 'row' }
+                  flexDirection: { xs: 'column', sm: 'row' },
+                  width: { xs: '100%', sm: 'auto' }
                 }}>
-                  <IconButton
-                    onClick={() => setShowFilters(!showFilters)}
-                    sx={{
-                      color: 'primary.main',
-                      '&:hover': {
-                        backgroundColor: 'rgba(76, 175, 80, 0.1)',
-                      },
-                    }}
-                  >
-                    <FilterList />
-                    {showFilters ? <ExpandLess /> : <ExpandMore />}
-                  </IconButton>
+                  <Box sx={{ 
+                    display: 'flex', 
+                    justifyContent: 'center',
+                    width: { xs: '100%', sm: 'auto' }
+                  }}>
+                    <IconButton
+                      onClick={() => setShowFilters(!showFilters)}
+                      sx={{
+                        color: 'primary.main',
+                        '&:hover': {
+                          backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                        },
+                      }}
+                    >
+                      <FilterList />
+                      {showFilters ? <ExpandLess /> : <ExpandMore />}
+                    </IconButton>
+                  </Box>
 
                   <motion.div
                     whileHover={{ scale: 1.02 }}
                     whileFocus={{ scale: 1.02 }}
+                    style={{ width: '100%', display: 'flex', justifyContent: 'center' }}
                   >
                     <TextField
                       placeholder="Search jobs..."
@@ -553,6 +563,7 @@ const OptimizedAdminDashboardPage: React.FC = () => {
                       sx={{ 
                         minWidth: { xs: '100%', sm: 250, md: 300 },
                         width: { xs: '100%', sm: 'auto' },
+                        maxWidth: { xs: '100%', sm: 'none' },
                         '& .MuiOutlinedInput-root': {
                           borderRadius: 3,
                           background: 'rgba(255, 255, 255, 0.8)',
@@ -573,51 +584,57 @@ const OptimizedAdminDashboardPage: React.FC = () => {
                     />
                   </motion.div>
                   
-                  <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <ToggleButtonGroup
-                      value={viewMode}
-                      exclusive
-                      onChange={handleViewModeChange}
-                      aria-label="view mode"
-                      size="small"
-                      sx={{
-                        '& .MuiToggleButton-root': {
-                          borderRadius: 2,
-                          border: '1px solid rgba(76, 175, 80, 0.3)',
-                          color: 'rgba(76, 175, 80, 0.7)',
-                          fontWeight: 600,
-                          px: 2,
-                          py: 1,
-                          transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                          '&:hover': {
-                            backgroundColor: 'rgba(76, 175, 80, 0.1)',
-                            borderColor: 'rgba(76, 175, 80, 0.5)',
-                            color: 'rgba(76, 175, 80, 0.9)',
-                          },
-                          '&.Mui-selected': {
-                            backgroundColor: 'linear-gradient(135deg, #4caf50 0%, #388e3c 100%)',
-                            color: 'white',
-                            borderColor: '#4caf50',
+                  <Box sx={{ 
+                    display: 'flex', 
+                    justifyContent: 'center',
+                    width: { xs: '100%', sm: 'auto' }
+                  }}>
+                    <motion.div
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <ToggleButtonGroup
+                        value={viewMode}
+                        exclusive
+                        onChange={handleViewModeChange}
+                        aria-label="view mode"
+                        size="small"
+                        sx={{
+                          '& .MuiToggleButton-root': {
+                            borderRadius: 2,
+                            border: '1px solid rgba(76, 175, 80, 0.3)',
+                            color: 'rgba(76, 175, 80, 0.7)',
+                            fontWeight: 600,
+                            px: 2,
+                            py: 1,
+                            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                             '&:hover': {
-                              backgroundColor: 'linear-gradient(135deg, #388e3c 0%, #2e7d32 100%)',
+                              backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                              borderColor: 'rgba(76, 175, 80, 0.5)',
+                              color: 'rgba(76, 175, 80, 0.9)',
+                            },
+                            '&.Mui-selected': {
+                              backgroundColor: 'linear-gradient(135deg, #4caf50 0%, #388e3c 100%)',
+                              color: 'white',
+                              borderColor: '#4caf50',
+                              '&:hover': {
+                                backgroundColor: 'linear-gradient(135deg, #388e3c 0%, #2e7d32 100%)',
+                              },
                             },
                           },
-                        },
-                      }}
-                    >
-                      <ToggleButton value="list" aria-label="list view">
-                        <ViewList sx={{ mr: 1, fontSize: 18 }} />
-                        List
-                      </ToggleButton>
-                      <ToggleButton value="calendar" aria-label="calendar view">
-                        <CalendarMonth sx={{ mr: 1, fontSize: 18 }} />
-                        Calendar
-                      </ToggleButton>
-                    </ToggleButtonGroup>
-                  </motion.div>
+                        }}
+                      >
+                        <ToggleButton value="list" aria-label="list view">
+                          <ViewList sx={{ mr: 1, fontSize: 18 }} />
+                          List
+                        </ToggleButton>
+                        <ToggleButton value="calendar" aria-label="calendar view">
+                          <CalendarMonth sx={{ mr: 1, fontSize: 18 }} />
+                          Calendar
+                        </ToggleButton>
+                      </ToggleButtonGroup>
+                    </motion.div>
+                  </Box>
                 </Box>
               </Box>
 
