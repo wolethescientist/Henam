@@ -666,47 +666,64 @@ async def get_clients_list(
     request: Request = None
 ):
     """
-    Get unique clients with job counts and financial summary.
+    Get list of all unique clients with job counts and financial summary.
+    Used for client autocomplete and grouping.
     Optimized query with caching.
     """
     try:
-        # Query to get client summaries
+        logger.info(f"Fetching client list for user {current_user.id}")
+        
+        # Query to get client summaries with aggregated data
+        # Group by client and calculate metrics
         client_data = db.query(
             Job.client.label('client_name'),
             func.count(Job.id).label('total_jobs'),
-            func.sum(case((Job.status.in_([JobStatus.NOT_STARTED, JobStatus.IN_PROGRESS]), 1), else_=0)).label('active_jobs'),
-            func.sum(case((Job.status == JobStatus.COMPLETED, 1), else_=0)).label('completed_jobs'),
+            func.sum(
+                case(
+                    (Job.status.in_([JobStatus.NOT_STARTED, JobStatus.IN_PROGRESS]), 1),
+                    else_=0
+                )
+            ).label('active_jobs'),
+            func.sum(
+                case(
+                    (Job.status == JobStatus.COMPLETED, 1),
+                    else_=0
+                )
+            ).label('completed_jobs'),
             func.max(Job.start_date).label('last_job_date')
-        ).group_by(Job.client).order_by(desc('last_job_date')).all()
+        ).group_by(Job.client).all()
         
-        # Get financial data for each client
-        clients = []
-        for row in client_data:
-            # Get invoices for this client's jobs
-            invoice_data = db.query(
+        # Build client summaries with financial data
+        client_summaries = []
+        for client in client_data:
+            # Get financial data from invoices for this client
+            financial_data = db.query(
                 func.coalesce(func.sum(Invoice.amount), 0).label('total_billed'),
                 func.coalesce(func.sum(Invoice.paid_amount), 0).label('total_paid')
-            ).join(Job, Invoice.job_id == Job.id).filter(
-                Job.client == row.client_name
+            ).filter(
+                func.lower(Invoice.client_name) == func.lower(client.client_name)
             ).first()
             
-            clients.append(ClientSummary(
-                client_name=row.client_name,
-                total_jobs=row.total_jobs,
-                active_jobs=row.active_jobs,
-                completed_jobs=row.completed_jobs,
-                total_billed=invoice_data.total_billed if invoice_data else 0.0,
-                total_paid=invoice_data.total_paid if invoice_data else 0.0,
-                total_pending=(invoice_data.total_billed - invoice_data.total_paid) if invoice_data else 0.0,
-                last_job_date=row.last_job_date
+            total_billed = float(financial_data.total_billed) if financial_data else 0.0
+            total_paid = float(financial_data.total_paid) if financial_data else 0.0
+            total_pending = total_billed - total_paid
+            
+            client_summaries.append(ClientSummary(
+                client_name=client.client_name,
+                total_jobs=int(client.total_jobs),
+                active_jobs=int(client.active_jobs or 0),
+                completed_jobs=int(client.completed_jobs or 0),
+                total_billed=total_billed,
+                total_paid=total_paid,
+                total_pending=total_pending,
+                last_job_date=client.last_job_date
             ))
         
-        logger.info(f"Retrieved {len(clients)} unique clients")
+        # Sort by last job date (most recent first)
+        client_summaries.sort(key=lambda x: x.last_job_date or datetime.min, reverse=True)
         
-        return {
-            "clients": clients,
-            "total_count": len(clients)
-        }
+        logger.info(f"Retrieved {len(client_summaries)} unique clients")
+        return client_summaries
         
     except SQLAlchemyError as e:
         logger.error(f"Database error retrieving clients list", exc_info=True)
