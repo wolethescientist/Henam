@@ -63,6 +63,10 @@ class NotificationQueue:
                 await self._handle_job_created(notification_data)
             elif notification_type == 'job_updated':
                 await self._handle_job_updated(notification_data)
+            elif notification_type == 'manual_job_created':
+                await self._handle_manual_job_created(notification_data)
+            elif notification_type == 'invoice_linked_to_job':
+                await self._handle_invoice_linked_to_job(notification_data)
             elif notification_type == 'task_created':
                 await self._handle_task_created(notification_data)
             elif notification_type == 'task_updated':
@@ -316,6 +320,112 @@ class NotificationQueue:
         }
         await self.queue.put(notification_data)
         logger.info(f"Task updated notification queued for task {task_data.get('id')}")
+    
+    async def enqueue_manual_job_created(self, job_data: Dict[str, Any], supervisor_data: Dict[str, str], created_by: str):
+        """Enqueue manual job creation notification."""
+        notification_data = {
+            'type': 'manual_job_created',
+            'job_data': job_data,
+            'supervisor_data': supervisor_data,
+            'created_by': created_by,
+            'timestamp': datetime.now().isoformat()
+        }
+        await self.queue.put(notification_data)
+        logger.info(f"Manual job creation notification queued for job {job_data.get('id')}")
+    
+    async def enqueue_invoice_linked_to_job(self, invoice_data: Dict[str, Any], job_data: Dict[str, Any], supervisor_data: Dict[str, str]):
+        """Enqueue invoice-to-job linking notification."""
+        notification_data = {
+            'type': 'invoice_linked_to_job',
+            'invoice_data': invoice_data,
+            'job_data': job_data,
+            'supervisor_data': supervisor_data,
+            'timestamp': datetime.now().isoformat()
+        }
+        await self.queue.put(notification_data)
+        logger.info(f"Invoice linking notification queued for invoice {invoice_data.get('invoice_number')} and job {job_data.get('id')}")
+    
+    async def _handle_manual_job_created(self, data: Dict[str, Any]):
+        """Handle manual job creation notification."""
+        logger.info(f"Processing manual job creation notification for job {data.get('job_data', {}).get('id')}")
+        
+        db = next(get_db())
+        try:
+            job_data = data.get('job_data', {})
+            supervisor_data = data.get('supervisor_data', {})
+            created_by = data.get('created_by', 'System')
+            
+            # Send email notification to supervisor
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                self.executor,
+                email_service.send_manual_job_created_notification,
+                job_data,
+                supervisor_data,
+                created_by
+            )
+            
+            # Create in-app notification for supervisor
+            supervisor_id = supervisor_data.get('id')
+            if supervisor_id:
+                notification = Notification(
+                    user_id=supervisor_id,
+                    type=NotificationType.JOB_ASSIGNED,
+                    title="New Job Created",
+                    message=f"A new job '{job_data.get('title', 'Untitled')}' has been manually created and assigned to you.",
+                    related_id=job_data.get('id')
+                )
+                db.add(notification)
+                db.commit()
+            
+            logger.info(f"Manual job creation notification processed successfully for job {job_data.get('id')}")
+            
+        except Exception as e:
+            logger.error(f"Error handling manual job creation notification: {str(e)}", exc_info=True)
+            db.rollback()
+        finally:
+            db.close()
+    
+    async def _handle_invoice_linked_to_job(self, data: Dict[str, Any]):
+        """Handle invoice-to-job linking notification."""
+        logger.info(f"Processing invoice linking notification")
+        
+        db = next(get_db())
+        try:
+            invoice_data = data.get('invoice_data', {})
+            job_data = data.get('job_data', {})
+            supervisor_data = data.get('supervisor_data', {})
+            
+            # Send email notification to supervisor
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                self.executor,
+                email_service.send_invoice_linked_to_job_notification,
+                invoice_data,
+                job_data,
+                supervisor_data
+            )
+            
+            # Create in-app notification for supervisor
+            supervisor_id = supervisor_data.get('id')
+            if supervisor_id:
+                notification = Notification(
+                    user_id=supervisor_id,
+                    type=NotificationType.JOB_ASSIGNED,
+                    title="Invoice Linked to Job",
+                    message=f"Invoice #{invoice_data.get('invoice_number')} has been linked to job '{job_data.get('title')}'.",
+                    related_id=job_data.get('id')
+                )
+                db.add(notification)
+                db.commit()
+            
+            logger.info(f"Invoice linking notification processed successfully")
+            
+        except Exception as e:
+            logger.error(f"Error handling invoice linking notification: {str(e)}", exc_info=True)
+            db.rollback()
+        finally:
+            db.close()
 
 
 # Global notification queue instance

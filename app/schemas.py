@@ -265,6 +265,10 @@ class InvoicePay(BaseModel):
     paid_amount: float
 
 
+class InvoiceLinkToJob(BaseModel):
+    job_id: int
+
+
 class InvoiceResponse(BaseModel):
     id: int
     invoice_number: str
@@ -708,3 +712,67 @@ class FinancialFilterRequest(BaseModel):
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     category: Optional[str] = None
+
+
+# Job Duplicate Detection Schemas
+class JobSummary(BaseModel):
+    id: int
+    title: str
+    client: str
+    status: JobStatus
+    progress: float
+    team_name: str
+    supervisor_name: str
+    start_date: datetime
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DuplicateCheckResult(BaseModel):
+    has_duplicates: bool
+    matching_jobs: List[JobSummary]
+    is_repeat_project: bool  # True if completed jobs exist with same title
+    previous_job: Optional[JobSummary] = None  # Most recent completed job for copying settings
+    suggestion: str  # Human-readable suggestion
+
+    class Config:
+        from_attributes = True
+
+
+class DuplicateCheckRequest(BaseModel):
+    client_name: str
+    job_title: str
+
+
+class DuplicateCheckResponse(DuplicateCheckResult):
+    pass
+
+
+# Client Summary Schemas
+class ClientSummary(BaseModel):
+    client_name: str
+    total_jobs: int
+    active_jobs: int
+    completed_jobs: int
+    total_billed: float
+    total_paid: float
+    total_pending: float
+    last_job_date: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Audit Log Schemas
+class AuditLogEntry(BaseModel):
+    id: int
+    event_type: str
+    user_name: str
+    timestamp: datetime
+    event_data: Optional[Dict[str, Any]] = None
+    description: str  # Human-readable description
+
+    class Config:
+        from_attributes = True

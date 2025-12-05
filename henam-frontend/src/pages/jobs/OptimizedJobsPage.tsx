@@ -43,6 +43,10 @@ import {
   TrendingUp,
   Receipt,
   Assignment,
+  Add,
+  ViewList,
+  ViewModule,
+  History,
 } from '@mui/icons-material';
 import { useGetUnifiedJobsDataQuery } from '../../store/api/unifiedApis';
 import { useGetMyJobsQuery } from '../../store/api/jobsApi';
@@ -53,6 +57,9 @@ import KebabMenu from '../../components/common/KebabMenu';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import DateRangeFilter, { type DateFilterValue } from '../../components/common/DateRangeFilter';
 import OptimizedJobAssignmentModal from '../../components/jobs/OptimizedJobAssignmentModal';
+import CreateJobModal from '../../components/jobs/CreateJobModal';
+import ClientGroupedView from '../../components/jobs/ClientGroupedView';
+import JobAuditLogViewer from '../../components/jobs/JobAuditLogViewer';
 import { useHighlight } from '../../hooks/useHighlight';
 import { useAuthErrorHandlerForQuery } from '../../hooks/useAuthErrorHandler';
 import { useCrudFeedback } from '../../hooks/useCrudFeedback';
@@ -65,8 +72,11 @@ const OptimizedJobsPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [supervisorFilter, setSupervisorFilter] = useState<number | ''>('');
   const [dateFilter, setDateFilter] = useState<DateFilterValue | null>(null);
+  const [creationSourceFilter, setCreationSourceFilter] = useState<string>('');
   const [viewMode, setViewMode] = useState<'all' | 'my'>('all');
+  const [displayMode, setDisplayMode] = useState<'list' | 'grouped'>('list');
   const [openDialog, setOpenDialog] = useState(false);
+  const [createJobModalOpen, setCreateJobModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [progressDialogOpen, setProgressDialogOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
@@ -75,6 +85,8 @@ const OptimizedJobsPage: React.FC = () => {
   const [selectedJobForInvoice, setSelectedJobForInvoice] = useState<Job | null>(null);
   const [assignmentDialogOpen, setAssignmentDialogOpen] = useState(false);
   const [selectedJobForAssignment, setSelectedJobForAssignment] = useState<Job | null>(null);
+  const [auditLogDialogOpen, setAuditLogDialogOpen] = useState(false);
+  const [selectedJobForAuditLog, setSelectedJobForAuditLog] = useState<Job | null>(null);
   const [formData, setFormData] = useState<CreateJobForm>({
     title: '',
     client: '',
@@ -87,8 +99,6 @@ const OptimizedJobsPage: React.FC = () => {
   
   // Use notification hooks for all job operations
   const { updateJob, deleteJob, updateJobProgress } = useJobsWithNotifications();
-  
-
   
   // Initialize feedback hooks
   const { updateWithFeedback, deleteWithFeedback } = useCrudFeedback();
@@ -105,7 +115,7 @@ const OptimizedJobsPage: React.FC = () => {
   // Reset page when filters change
   useEffect(() => {
     setPage(0);
-  }, [statusFilter, supervisorFilter, dateFilter, debouncedSearchTerm, viewMode]);
+  }, [statusFilter, supervisorFilter, dateFilter, debouncedSearchTerm, viewMode, creationSourceFilter]);
 
   // Build query parameters with all filters
   const buildQueryParams = () => {
@@ -188,7 +198,10 @@ const OptimizedJobsPage: React.FC = () => {
   const invoicesByJob = unifiedData?.invoices_by_job || {};
   const pagination = viewMode === 'all' ? unifiedData?.pagination : { total_count: myJobs?.length || 0 };
   
-  const filteredJobs = jobs; // Already filtered by API
+  // Filter jobs by creation source (client-side filter)
+  const filteredJobs = creationSourceFilter 
+    ? jobs.filter(job => job.creation_source === creationSourceFilter)
+    : jobs;
   
   // Debug logging for team assignments
   React.useEffect(() => {
@@ -216,6 +229,31 @@ const OptimizedJobsPage: React.FC = () => {
     if (newViewMode !== null) {
       setViewMode(newViewMode);
     }
+  };
+
+  const handleDisplayModeChange = (_event: React.MouseEvent<HTMLElement>, newDisplayMode: 'list' | 'grouped' | null) => {
+    if (newDisplayMode !== null) {
+      setDisplayMode(newDisplayMode);
+    }
+  };
+
+  const handleOpenCreateJobModal = () => {
+    setCreateJobModalOpen(true);
+  };
+
+  const handleCloseCreateJobModal = () => {
+    setCreateJobModalOpen(false);
+  };
+
+  const handleJobCreated = async () => {
+    // Refresh the jobs list
+    if (viewMode === 'all') {
+      await refetchUnifiedJobs();
+    } else {
+      await refetchMyJobs();
+    }
+    // Success toast is already shown in CreateJobModal
+    handleCloseCreateJobModal();
   };
 
   const handleOpenDialog = (job: Job) => {
@@ -320,6 +358,16 @@ const OptimizedJobsPage: React.FC = () => {
     setSelectedJobForAssignment(null);
   };
 
+  const handleOpenAuditLogDialog = (job: Job) => {
+    setSelectedJobForAuditLog(job);
+    setAuditLogDialogOpen(true);
+  };
+
+  const handleCloseAuditLogDialog = () => {
+    setAuditLogDialogOpen(false);
+    setSelectedJobForAuditLog(null);
+  };
+
   const handleAssignmentSuccess = async () => {
     console.log('🔄 Assignment success, forcing refetch...');
     
@@ -372,6 +420,31 @@ const OptimizedJobsPage: React.FC = () => {
     }
   };
 
+  const getCreationSourceBadge = (creationSource?: string) => {
+    if (!creationSource) return null;
+    
+    if (creationSource === 'MANUAL') {
+      return (
+        <Chip
+          label="Manual"
+          size="small"
+          color="secondary"
+          sx={{ ml: 1 }}
+        />
+      );
+    } else if (creationSource === 'AUTO_FROM_INVOICE') {
+      return (
+        <Chip
+          label="From Invoice"
+          size="small"
+          color="info"
+          sx={{ ml: 1 }}
+        />
+      );
+    }
+    return null;
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-NG', {
       style: 'currency',
@@ -402,15 +475,21 @@ const OptimizedJobsPage: React.FC = () => {
         gap={{ xs: 2, sm: 0 }}
       >
         <Typography variant="h4" sx={{ fontSize: { xs: '1.75rem', sm: '2.25rem' } }}>Jobs Management</Typography>
-        <Box display="flex" alignItems="center" gap={2}>
-          <Typography variant="body2" color="textSecondary" sx={{ fontStyle: 'italic' }}>
-            Jobs are automatically created when invoices receive payment
-          </Typography>
+        <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<Add />}
+            onClick={handleOpenCreateJobModal}
+            sx={{ textTransform: 'none' }}
+          >
+            Create Job
+          </Button>
         </Box>
       </Box>
 
-      {/* View Mode Toggle */}
-      <Box display="flex" justifyContent="center" mb={3}>
+      {/* View Mode and Display Mode Toggles */}
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3} flexWrap="wrap" gap={2}>
         <ToggleButtonGroup
           value={viewMode}
           exclusive
@@ -438,6 +517,36 @@ const OptimizedJobsPage: React.FC = () => {
           </ToggleButton>
           <ToggleButton value="my" aria-label="my jobs">
             My Jobs
+          </ToggleButton>
+        </ToggleButtonGroup>
+
+        <ToggleButtonGroup
+          value={displayMode}
+          exclusive
+          onChange={handleDisplayModeChange}
+          aria-label="display mode"
+          sx={{
+            '& .MuiToggleButton-root': {
+              px: 2,
+              py: 1,
+              textTransform: 'none',
+              '&.Mui-selected': {
+                backgroundColor: 'primary.main',
+                color: 'white',
+                '&:hover': {
+                  backgroundColor: 'primary.dark',
+                },
+              },
+            },
+          }}
+        >
+          <ToggleButton value="list" aria-label="list view">
+            <ViewList sx={{ mr: 1 }} />
+            List View
+          </ToggleButton>
+          <ToggleButton value="grouped" aria-label="grouped view">
+            <ViewModule sx={{ mr: 1 }} />
+            Client Grouped
           </ToggleButton>
         </ToggleButtonGroup>
       </Box>
@@ -498,11 +607,25 @@ const OptimizedJobsPage: React.FC = () => {
             </Select>
           </FormControl>
         </Box>
+        <Box minWidth={{ xs: '100%', sm: '150px', md: '200px' }}>
+          <FormControl fullWidth size="medium">
+            <InputLabel>Creation Source</InputLabel>
+            <Select
+              value={creationSourceFilter}
+              onChange={(e) => setCreationSourceFilter(e.target.value)}
+              label="Creation Source"
+            >
+              <MenuItem value="">All Sources</MenuItem>
+              <MenuItem value="MANUAL">Manual</MenuItem>
+              <MenuItem value="AUTO_FROM_INVOICE">From Invoice</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
         <Box minWidth={{ xs: '100%', sm: '120px', md: '150px' }}>
           <Card>
             <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
               <Typography variant="h6" color="primary">
-                {pagination?.total_count || 0}
+                {filteredJobs.length}
               </Typography>
               <Typography variant="body2" color="textSecondary">
                 {viewMode === 'all' ? 'Total Jobs' : 'My Jobs'}
@@ -522,24 +645,34 @@ const OptimizedJobsPage: React.FC = () => {
         />
       </Box>
 
-      {/* Jobs Table */}
-      <Paper sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <TableContainer sx={{ overflowX: 'auto', flex: 1 }}>
-          <Table sx={{ minWidth: { xs: 600, sm: 650 } }}>
-            <TableHead>
-              <TableRow>
-                <TableCell>Job Title</TableCell>
-                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Client</TableCell>
-                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Team</TableCell>
-                <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>Assigned To</TableCell>
-                <TableCell>Progress</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Start Date</TableCell>
-                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>End Date</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
+      {/* Jobs Display - List or Grouped View */}
+      {displayMode === 'grouped' ? (
+        <ClientGroupedView
+          onEditJob={handleOpenDialog}
+          onDeleteJob={handleDelete}
+          onUpdateProgress={handleOpenProgressDialog}
+          onViewInvoices={handleViewInvoices}
+          onAssignJob={handleOpenAssignmentDialog}
+          onViewAuditLog={handleOpenAuditLogDialog}
+        />
+      ) : (
+        <Paper sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <TableContainer sx={{ overflowX: 'auto', flex: 1 }}>
+            <Table sx={{ minWidth: { xs: 600, sm: 650 } }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Job Title</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Client</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Team</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>Assigned To</TableCell>
+                  <TableCell>Progress</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Start Date</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>End Date</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
               {filteredJobs.map((job, index) => (
                 <TableRow 
                   key={job.id || `job-${index}`}
@@ -553,7 +686,10 @@ const OptimizedJobsPage: React.FC = () => {
                         <Work />
                       </Avatar>
                       <Box>
-                        <Typography variant="subtitle1">{job.title}</Typography>
+                        <Box display="flex" alignItems="center" flexWrap="wrap">
+                          <Typography variant="subtitle1">{job.title}</Typography>
+                          {getCreationSourceBadge(job.creation_source)}
+                        </Box>
                         <Typography variant="caption" color="textSecondary">
                           {job.client}
                         </Typography>
@@ -653,6 +789,11 @@ const OptimizedJobsPage: React.FC = () => {
                           onClick: () => handleViewInvoices(job),
                         },
                         {
+                          label: 'View Audit Log',
+                          icon: <History />,
+                          onClick: () => handleOpenAuditLogDialog(job),
+                        },
+                        {
                           label: 'Update Progress',
                           icon: <TrendingUp />,
                           onClick: () => handleOpenProgressDialog(job),
@@ -675,20 +816,21 @@ const OptimizedJobsPage: React.FC = () => {
                   </TableCell>
                 </TableRow>
               ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableBody>
+            </Table>
+          </TableContainer>
 
-        <TablePagination
-          rowsPerPageOptions={[5, 10, 25]}
-          component="div"
-          count={pagination?.total_count || 0}
-          rowsPerPage={rowsPerPage}
-          page={page}
-          onPageChange={handleChangePage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
-        />
-      </Paper>
+          <TablePagination
+            rowsPerPageOptions={[5, 10, 25]}
+            component="div"
+            count={pagination?.total_count || 0}
+            rowsPerPage={rowsPerPage}
+            page={page}
+            onPageChange={handleChangePage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+          />
+        </Paper>
+      )}
 
       {/* Edit Job Dialog - Only for editing existing jobs */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
@@ -877,6 +1019,41 @@ const OptimizedJobsPage: React.FC = () => {
         currentSupervisorId={selectedJobForAssignment?.supervisor_id}
         onSuccess={handleAssignmentSuccess}
       />
+
+      {/* Create Job Modal */}
+      <CreateJobModal
+        open={createJobModalOpen}
+        onClose={handleCloseCreateJobModal}
+        onSuccess={handleJobCreated}
+      />
+
+      {/* Audit Log Dialog */}
+      <Dialog
+        open={auditLogDialogOpen}
+        onClose={handleCloseAuditLogDialog}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <History />
+            Job Audit Log
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {selectedJobForAuditLog && (
+            <Box>
+              <Typography variant="subtitle1" gutterBottom sx={{ mb: 2 }}>
+                <strong>Job:</strong> {selectedJobForAuditLog.title}
+              </Typography>
+              <JobAuditLogViewer jobId={selectedJobForAuditLog.id} />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseAuditLogDialog}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

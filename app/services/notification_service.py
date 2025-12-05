@@ -223,6 +223,113 @@ class NotificationService:
                     changes.append(f"{key.replace('_', ' ').title()} updated")
         
         return "; ".join(changes) if changes else "No specific changes detected"
+    
+    async def notify_manual_job_created(self, job: Job, created_by_user: User, db: Session):
+        """
+        Send notifications when a job is manually created.
+        Sends notification to the assigned supervisor.
+        """
+        try:
+            logger.info(f"Starting manual job creation notification for job {job.id}")
+            
+            # Get supervisor
+            supervisor = db.query(User).filter(User.id == job.supervisor_id).first()
+            if not supervisor:
+                logger.warning(f"No supervisor found for job {job.id}")
+                return
+            
+            # Prepare job data
+            job_data = {
+                'id': job.id,
+                'title': job.title,
+                'client': job.client,
+                'start_date': job.start_date.isoformat() if job.start_date else None,
+                'end_date': job.end_date.isoformat() if job.end_date else None,
+                'progress': job.progress,
+                'status': job.status.value if job.status else 'not_started'
+            }
+            
+            supervisor_data = {
+                'id': supervisor.id,
+                'name': supervisor.name,
+                'email': supervisor.email
+            }
+            
+            created_by = created_by_user.name
+            
+            # Enqueue notification
+            await self.queue.enqueue_manual_job_created(job_data, supervisor_data, created_by)
+            
+            # Send real-time WebSocket update to supervisor
+            await websocket_manager.broadcast_to_users({
+                'type': 'manual_job_created',
+                'data': {
+                    **job_data,
+                    'created_by': created_by
+                },
+                'timestamp': datetime.now().isoformat()
+            }, [supervisor.id])
+            
+            logger.info(f"Manual job creation notification process completed for job {job.id}")
+            
+        except Exception as e:
+            logger.error(f"Error notifying manual job created: {str(e)}", exc_info=True)
+    
+    async def notify_invoice_linked_to_job(self, invoice, job: Job, db: Session):
+        """
+        Send notifications when an invoice is linked to an existing job.
+        Sends notification to the job supervisor.
+        """
+        try:
+            logger.info(f"Starting invoice linking notification for invoice {invoice.id} and job {job.id}")
+            
+            # Get supervisor
+            supervisor = db.query(User).filter(User.id == job.supervisor_id).first()
+            if not supervisor:
+                logger.warning(f"No supervisor found for job {job.id}")
+                return
+            
+            # Prepare invoice and job data
+            invoice_data = {
+                'id': invoice.id,
+                'invoice_number': invoice.invoice_number,
+                'client_name': invoice.client_name,
+                'amount': float(invoice.amount),
+                'paid_amount': float(invoice.paid_amount),
+                'pending_amount': float(invoice.pending_amount)
+            }
+            
+            job_data = {
+                'id': job.id,
+                'title': job.title,
+                'client': job.client,
+                'status': job.status.value if job.status else 'not_started',
+                'progress': job.progress
+            }
+            
+            supervisor_data = {
+                'id': supervisor.id,
+                'name': supervisor.name,
+                'email': supervisor.email
+            }
+            
+            # Enqueue notification
+            await self.queue.enqueue_invoice_linked_to_job(invoice_data, job_data, supervisor_data)
+            
+            # Send real-time WebSocket update to supervisor
+            await websocket_manager.broadcast_to_users({
+                'type': 'invoice_linked_to_job',
+                'data': {
+                    'invoice': invoice_data,
+                    'job': job_data
+                },
+                'timestamp': datetime.now().isoformat()
+            }, [supervisor.id])
+            
+            logger.info(f"Invoice linking notification process completed")
+            
+        except Exception as e:
+            logger.error(f"Error notifying invoice linked to job: {str(e)}", exc_info=True)
 
 
 # Global notification service instance

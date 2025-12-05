@@ -68,6 +68,20 @@ class NotificationStatus(str, enum.Enum):
     ARCHIVED = "ARCHIVED"
 
 
+class JobCreationSource(str, enum.Enum):
+    MANUAL = "MANUAL"
+    AUTO_FROM_INVOICE = "AUTO_FROM_INVOICE"
+
+
+class JobAuditEventType(str, enum.Enum):
+    JOB_CREATED = "JOB_CREATED"
+    DUPLICATE_WARNING_SHOWN = "DUPLICATE_WARNING_SHOWN"
+    DUPLICATE_OVERRIDE = "DUPLICATE_OVERRIDE"
+    INVOICE_LINKED = "INVOICE_LINKED"
+    JOB_UPDATED = "JOB_UPDATED"
+    JOB_MERGED = "JOB_MERGED"
+
+
 class User(Base):
     __tablename__ = "users"
     
@@ -170,6 +184,30 @@ class Job(Base):
     supervisor_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     assigner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)  # Who assigned the job
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
+    
+    # New fields for manual job creation and duplicate prevention
+    creation_source = Column(
+        SQLEnum(JobCreationSource, values_callable=lambda obj: [e.value for e in obj]),
+        default=JobCreationSource.MANUAL,
+        nullable=False,
+        index=True
+    )
+    originating_invoice_id = Column(
+        Integer,
+        ForeignKey("invoices.id"),
+        nullable=True,
+        index=True
+    )
+    duplicate_override = Column(
+        Boolean,
+        default=False,
+        index=True
+    )  # True if created despite duplicate warning
+    duplicate_justification = Column(
+        Text,
+        nullable=True
+    )  # User's reason for creating duplicate
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
@@ -179,6 +217,12 @@ class Job(Base):
     team = relationship("Team", back_populates="jobs")
     tasks = relationship("Task", back_populates="job")
     invoices = relationship("Invoice", foreign_keys="Invoice.job_id", back_populates="job")
+    originating_invoice = relationship(
+        "Invoice",
+        foreign_keys=[originating_invoice_id],
+        backref="created_job"
+    )
+    audit_logs = relationship("JobAuditLog", back_populates="job")
     
     # Composite indexes for better performance
     __table_args__ = (
@@ -189,6 +233,11 @@ class Job(Base):
         Index('ix_jobs_supervisor_assigner', 'supervisor_id', 'assigner_id'),
         Index('ix_jobs_created_at', 'created_at'),  # For ordering
         Index('ix_jobs_supervisor_status', 'supervisor_id', 'status'),  # For supervisor queries
+        # New indexes for duplicate detection and smart linking
+        Index('ix_jobs_client_lower', func.lower(client)),
+        Index('ix_jobs_title_lower', func.lower(title)),
+        Index('ix_jobs_client_title_status', 'client', 'title', 'status'),
+        Index('ix_jobs_client_status', 'client', 'status'),
     )
     
     def update_status_from_progress(self):
@@ -214,6 +263,10 @@ class Job(Base):
             "supervisor_id": self.supervisor_id,
             "assigner_id": self.assigner_id,
             "team_id": self.team_id,
+            "creation_source": self.creation_source.value if hasattr(self.creation_source, 'value') else str(self.creation_source),
+            "originating_invoice_id": self.originating_invoice_id,
+            "duplicate_override": self.duplicate_override,
+            "duplicate_justification": self.duplicate_justification,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
@@ -222,6 +275,49 @@ class Job(Base):
             result["supervisor"] = self.supervisor.to_dict() if self.supervisor else None
             result["assigner"] = self.assigner.to_dict() if self.assigner else None
             result["team"] = self.team.to_dict() if self.team else None
+            result["originating_invoice"] = self.originating_invoice.to_dict() if self.originating_invoice else None
+        
+        return result
+
+
+class JobAuditLog(Base):
+    __tablename__ = "job_audit_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True, index=True)
+    event_type = Column(
+        SQLEnum(JobAuditEventType, values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False,
+        index=True
+    )
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    event_data = Column(Text, nullable=True)  # JSON string for flexible storage
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    
+    # Relationships
+    job = relationship("Job", back_populates="audit_logs")
+    user = relationship("User", backref="job_audit_logs")
+    
+    # Composite indexes for performance
+    __table_args__ = (
+        Index('ix_job_audit_logs_job_timestamp', 'job_id', 'timestamp'),
+        Index('ix_job_audit_logs_user_timestamp', 'user_id', 'timestamp'),
+    )
+    
+    def to_dict(self, include_relationships=False):
+        """Convert JobAuditLog model to dictionary for serialization"""
+        result = {
+            "id": self.id,
+            "job_id": self.job_id,
+            "event_type": self.event_type.value if self.event_type else None,
+            "user_id": self.user_id,
+            "event_data": self.event_data,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None
+        }
+        
+        if include_relationships:
+            result["job"] = self.job.to_dict() if self.job else None
+            result["user"] = self.user.to_dict() if self.user else None
         
         return result
 

@@ -949,6 +949,199 @@ class EmailService:
             print(f"📧 EMAIL SERVICE DEBUG: Error sending team member added email: {e}")
             logger.error(f"Error sending team member added notification: {e}")
             return False
+    
+    async def send_invoice_linked_notification(self, invoice, job, db) -> bool:
+        """Send notification when an invoice is linked to an existing job."""
+        try:
+            logger.info(f"Sending invoice linked notification for invoice {invoice.id} and job {job.id}")
+            
+            # Get supervisor information
+            from app.models import User
+            supervisor = db.query(User).filter(User.id == job.supervisor_id).first()
+            
+            if not supervisor or not supervisor.email:
+                logger.warning(f"No supervisor email found for job {job.id}")
+                return False
+            
+            # Prepare email data
+            invoice_data = {
+                'invoice_number': invoice.invoice_number,
+                'client_name': invoice.client_name,
+                'amount': invoice.amount,
+                'paid_amount': invoice.paid_amount,
+                'pending_amount': invoice.pending_amount
+            }
+            
+            job_data = {
+                'id': job.id,
+                'title': job.title,
+                'client': job.client,
+                'status': job.status.value if job.status else 'not_started',
+                'progress': job.progress
+            }
+            
+            recipients = [{'name': supervisor.name, 'email': supervisor.email}]
+            
+            # Send notification email
+            subject = f"Invoice Linked: #{invoice.invoice_number} linked to job '{job.title}'"
+            
+            success_count = 0
+            for recipient in recipients:
+                data = {
+                    'recipient_name': recipient['name'],
+                    'invoice_number': invoice_data['invoice_number'],
+                    'client_name': invoice_data['client_name'],
+                    'job_title': job_data['title'],
+                    'amount': invoice_data['amount'],
+                    'paid_amount': invoice_data['paid_amount'],
+                    'pending_amount': invoice_data['pending_amount'],
+                    'job_status': job_data['status'],
+                    'job_progress': job_data['progress'],
+                    'view_url': f"{self.frontend_url}/jobs/{job_data['id']}"
+                }
+                
+                # Create simple HTML template for invoice linking
+                html_content = f"""
+                <h2>💼 Invoice Linked to Job</h2>
+                <p>Hello {recipient['name']},</p>
+                <p>An invoice has been linked to one of your jobs:</p>
+                
+                <div class="info-box">
+                    <h3>Linking Details</h3>
+                    <p><strong>Invoice:</strong> #{invoice_data['invoice_number']}</p>
+                    <p><strong>Client:</strong> {invoice_data['client_name']}</p>
+                    <p><strong>Job:</strong> {job_data['title']}</p>
+                    <p><strong>Invoice Amount:</strong> ₦{invoice_data['amount']:,.2f}</p>
+                    <p><strong>Amount Paid:</strong> ₦{invoice_data['paid_amount']:,.2f}</p>
+                    <p><strong>Pending:</strong> ₦{invoice_data['pending_amount']:,.2f}</p>
+                    <p><strong>Job Status:</strong> {job_data['status'].replace('_', ' ').title()}</p>
+                    <p><strong>Job Progress:</strong> {job_data['progress']}%</p>
+                </div>
+                
+                <p>The invoice has been successfully linked to the job. You can now track all financial information related to this project in one place.</p>
+                
+                <div style="text-align: center;">
+                    <a href="{data['view_url']}" class="button">View Job Details</a>
+                </div>
+                """
+                
+                # Use the generic notification template
+                if self.send_email([recipient['email']], subject, "payment_updated", data):
+                    success_count += 1
+            
+            logger.info(f"Invoice linked notifications sent: {success_count}/{len(recipients)} successful")
+            return success_count > 0
+            
+        except Exception as e:
+            logger.error(f"Error sending invoice linked notification: {e}", exc_info=True)
+            return False
+    
+    def send_manual_job_created_notification(self, job_data: Dict[str, Any], supervisor_data: Dict[str, str], created_by: str) -> bool:
+        """
+        Send notification when a job is manually created.
+        This is sent to the supervisor assigned to the job.
+        """
+        logger.info(f"📧 Sending manual job creation notification for job {job_data.get('id')}")
+        logger.info(f"📧 Supervisor: {supervisor_data.get('name')} ({supervisor_data.get('email')})")
+        logger.info(f"📧 Created by: {created_by}")
+        
+        if not supervisor_data or not supervisor_data.get('email'):
+            logger.warning("No supervisor email provided for manual job creation notification")
+            return False
+        
+        subject = f"New Job Created: {job_data.get('title', 'Untitled')} assigned to you"
+        
+        # Format dates for display
+        start_date = job_data.get('start_date', '')
+        if start_date:
+            try:
+                if isinstance(start_date, str):
+                    start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00')).strftime('%Y-%m-%d')
+                else:
+                    start_date = start_date.strftime('%Y-%m-%d')
+            except:
+                start_date = str(start_date)
+        
+        end_date = job_data.get('end_date', '')
+        if end_date:
+            try:
+                if isinstance(end_date, str):
+                    end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00')).strftime('%Y-%m-%d')
+                else:
+                    end_date = end_date.strftime('%Y-%m-%d')
+            except:
+                end_date = str(end_date)
+        
+        data = {
+            'recipient_name': supervisor_data.get('name', 'Supervisor'),
+            'job_title': job_data.get('title', 'N/A'),
+            'client_name': job_data.get('client', 'N/A'),
+            'assigned_by': created_by,
+            'start_date': start_date or 'Not specified',
+            'end_date': end_date or 'Not specified',
+            'status': job_data.get('status', 'not_started'),
+            'progress': job_data.get('progress', 0),
+            'creation_source': 'Manual',
+            'view_url': f"{self.frontend_url}/jobs/{job_data.get('id')}"
+        }
+        
+        try:
+            result = self.send_email([supervisor_data['email']], subject, "user_job_assignment", data)
+            
+            if result:
+                logger.info(f"✅ Manual job creation notification sent successfully to {supervisor_data['email']}")
+            else:
+                logger.error(f"❌ Failed to send manual job creation notification to {supervisor_data['email']}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error sending manual job creation notification: {e}", exc_info=True)
+            return False
+    
+    def send_invoice_linked_to_job_notification(self, invoice_data: Dict[str, Any], job_data: Dict[str, Any], supervisor_data: Dict[str, str]) -> bool:
+        """
+        Send notification when an invoice is linked to an existing job.
+        This is sent to the job supervisor.
+        """
+        logger.info(f"📧 Sending invoice-to-job linking notification")
+        logger.info(f"📧 Invoice: {invoice_data.get('invoice_number')}")
+        logger.info(f"📧 Job: {job_data.get('title')}")
+        logger.info(f"📧 Supervisor: {supervisor_data.get('name')} ({supervisor_data.get('email')})")
+        
+        if not supervisor_data or not supervisor_data.get('email'):
+            logger.warning("No supervisor email provided for invoice linking notification")
+            return False
+        
+        subject = f"Invoice Linked: #{invoice_data.get('invoice_number')} linked to job '{job_data.get('title')}'"
+        
+        data = {
+            'recipient_name': supervisor_data.get('name', 'Supervisor'),
+            'invoice_number': invoice_data.get('invoice_number', 'N/A'),
+            'client_name': invoice_data.get('client_name', 'N/A'),
+            'job_title': job_data.get('title', 'N/A'),
+            'amount': invoice_data.get('amount', 0),
+            'paid_amount': invoice_data.get('paid_amount', 0),
+            'pending_amount': invoice_data.get('pending_amount', 0),
+            'job_status': job_data.get('status', 'not_started'),
+            'job_progress': job_data.get('progress', 0),
+            'view_url': f"{self.frontend_url}/jobs/{job_data.get('id')}"
+        }
+        
+        try:
+            # Use a custom template for invoice linking
+            result = self.send_email([supervisor_data['email']], subject, "payment_updated", data)
+            
+            if result:
+                logger.info(f"✅ Invoice linking notification sent successfully to {supervisor_data['email']}")
+            else:
+                logger.error(f"❌ Failed to send invoice linking notification to {supervisor_data['email']}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error sending invoice linking notification: {e}", exc_info=True)
+            return False
 
 
 # Global email service instance

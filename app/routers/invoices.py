@@ -9,7 +9,8 @@ from app.database import get_db
 from app.models import Invoice, Job, InvoiceStatus
 from app.schemas import (
     InvoiceCreate, InvoiceUpdate, InvoiceResponse, 
-    InvoicesResponse, InvoiceWithJobResponse, InvoicePay
+    InvoicesResponse, InvoiceWithJobResponse, InvoicePay,
+    InvoiceLinkToJob
 )
 from app.auth import get_current_user
 from app.utils.database_utils import DatabaseUtils, safe_get_by_id
@@ -414,6 +415,145 @@ def download_invoice_pdf(
             detail=f"Failed to generate PDF: {str(e)}"
         )
 
+@router.post("/{invoice_id}/link-to-job")
+async def link_invoice_to_job(
+    invoice_id: int,
+    link_data: InvoiceLinkToJob,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Link an invoice to an existing job.
+    This is used when multiple matching jobs are found and user selects one.
+    """
+    from app.services.job_creation_service import job_creation_service
+    from app.services.email_service import email_service
+    
+    job_id = link_data.job_id
+    
+    # Get the invoice
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        raise ResourceNotFoundError(
+            detail="Invoice not found",
+            resource_type="Invoice",
+            resource_id=invoice_id
+        )
+    
+    # Check if invoice is already linked
+    if invoice.converted_to_job:
+        raise BusinessLogicError(
+            detail="Invoice is already linked to a job",
+            rule="invoice_already_linked",
+            context={"invoice_id": invoice_id, "existing_job_id": invoice.converted_job_id}
+        )
+    
+    # Get the job
+    job = safe_get_by_id(db, Job, job_id)
+    if not job:
+        raise ResourceNotFoundError(
+            detail="Job not found",
+            resource_type="Job",
+            resource_id=job_id
+        )
+    
+    # Validate that job is active (NOT_STARTED or IN_PROGRESS)
+    from app.models import JobStatus
+    if job.status not in [JobStatus.NOT_STARTED, JobStatus.IN_PROGRESS]:
+        raise BusinessLogicError(
+            detail="Can only link invoices to active jobs (NOT_STARTED or IN_PROGRESS)",
+            rule="job_must_be_active",
+            context={"job_id": job_id, "job_status": job.status.value}
+        )
+    
+    try:
+        # Link invoice to job using the service
+        job_creation_service.link_invoice_to_job(invoice, job, db)
+        
+        # Commit the changes
+        db.commit()
+        db.refresh(invoice)
+        db.refresh(job)
+        
+        logger.info(
+            f"Invoice {invoice_id} successfully linked to job {job_id} by user {current_user.id}"
+        )
+        
+        # Send notifications in background
+        def send_linking_notifications():
+            try:
+                import threading
+                def run_notifications():
+                    try:
+                        import asyncio
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        
+                        # Send notification to supervisor
+                        notification_message = (
+                            f"Invoice {invoice.invoice_number} (${invoice.amount:,.2f}) "
+                            f"has been linked to job '{job.title}'"
+                        )
+                        
+                        from app.models import Notification, NotificationType, NotificationStatus
+                        notification = Notification(
+                            user_id=job.supervisor_id,
+                            type=NotificationType.JOB_ASSIGNED,
+                            title="Invoice Linked to Job",
+                            message=notification_message,
+                            related_id=job.id,
+                            status=NotificationStatus.UNREAD
+                        )
+                        db.add(notification)
+                        db.commit()
+                        
+                        # Send email notification
+                        loop.run_until_complete(
+                            email_service.send_invoice_linked_notification(
+                                invoice, job, db
+                            )
+                        )
+                        
+                        loop.close()
+                        logger.info(f"Sent linking notifications for invoice {invoice_id} and job {job_id}")
+                    except Exception as e:
+                        logger.warning(f"Error sending linking notifications: {e}")
+                
+                notification_thread = threading.Thread(target=run_notifications, daemon=True)
+                notification_thread.start()
+            except Exception as e:
+                logger.warning(f"Error starting linking notifications: {e}")
+        
+        send_linking_notifications()
+        
+        # Invalidate related cache entries
+        try:
+            cache_invalidation.invalidate_invoice_data(invoice_id)
+            cache_invalidation.invalidate_job_data(job_id)
+        except Exception as e:
+            logger.warning(f"Could not invalidate cache: {e}")
+        
+        return {
+            "message": "Invoice successfully linked to job",
+            "invoice_id": invoice_id,
+            "job_id": job_id,
+            "invoice_number": invoice.invoice_number,
+            "job_title": job.title
+        }
+        
+    except (ValidationError, ResourceNotFoundError, BusinessLogicError) as e:
+        db.rollback()
+        raise e
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error linking invoice to job: {str(e)}", exc_info=True)
+        raise DatabaseError(
+            detail="Failed to link invoice to job",
+            operation="link_invoice_to_job",
+            context={"invoice_id": invoice_id, "job_id": job_id, "error": str(e)}
+        )
+
+
 @router.patch("/{invoice_id}/payment", response_model=InvoiceWithJobResponse)
 async def update_invoice_payment(
     invoice_id: int,
@@ -421,7 +561,12 @@ async def update_invoice_payment(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """Update payment amount for an invoice."""
+    """
+    Update payment amount for an invoice.
+    Uses smart linking to find matching jobs and avoid duplicates.
+    """
+    from app.services.job_duplicate_service import job_duplicate_service
+    from app.services.job_creation_service import job_creation_service
     
     # Get the invoice
     invoice = db.query(Invoice).options(
@@ -457,35 +602,132 @@ async def update_invoice_payment(
     invoice.updated_at = datetime.utcnow()
     
     # Check if payment was made and invoice should be converted to job
-    print(f"🔍 Checking conversion: paid_amount={invoice.paid_amount}, old_paid_amount={old_paid_amount}, converted_to_job={invoice.converted_to_job}")
-    print(f"🔍 Should convert: {invoice_conversion_service.should_convert_to_job(invoice)}")
+    logger.info(
+        f"Checking conversion for invoice {invoice_id}: "
+        f"paid_amount={invoice.paid_amount}, old_paid_amount={old_paid_amount}, "
+        f"converted_to_job={invoice.converted_to_job}"
+    )
     
-    # Check if invoice should be converted (any payment > 0 and not already converted)
+    # Smart linking: Check for existing active jobs before creating new one
     if (not invoice.converted_to_job and 
         invoice_conversion_service.should_convert_to_job(invoice)):
         try:
-            print(f"🚀 Starting conversion for invoice #{invoice.invoice_number}")
-            # Convert to job
-            converted_job = await invoice_conversion_service.convert_invoice_to_job(invoice, db)
-            if converted_job:
-                print(f"✅ Successfully converted invoice #{invoice.invoice_number} to job #{converted_job.id}")
+            logger.info(f"Starting smart linking for invoice {invoice.invoice_number}")
+            
+            # Find matching active jobs for this client
+            matching_jobs = job_duplicate_service.find_matching_jobs_for_invoice(
+                client_name=invoice.client_name,
+                db=db
+            )
+            
+            if len(matching_jobs) == 1:
+                # Single match found - automatically link to existing job
+                existing_job = matching_jobs[0]
+                logger.info(
+                    f"Found single matching job {existing_job.id} for invoice {invoice_id}. "
+                    f"Auto-linking instead of creating new job."
+                )
+                
+                job_creation_service.link_invoice_to_job(invoice, existing_job, db)
+                
+                # Commit the linking
+                db.commit()
+                db.refresh(invoice)
+                
+                logger.info(
+                    f"Successfully auto-linked invoice {invoice_id} to job {existing_job.id}"
+                )
+                
+            elif len(matching_jobs) > 1:
+                # Multiple matches found - return list for user selection
+                logger.info(
+                    f"Found {len(matching_jobs)} matching jobs for invoice {invoice_id}. "
+                    f"User selection required."
+                )
+                
+                # Commit payment update but don't create job yet
+                db.commit()
+                db.refresh(invoice)
+                
+                # Return response with matching jobs for user selection
+                # The frontend will handle showing the selection dialog
+                matching_jobs_data = [
+                    {
+                        "id": job.id,
+                        "title": job.title,
+                        "client": job.client,
+                        "status": job.status.value,
+                        "progress": job.progress,
+                        "team_name": job.team.name if job.team else "Unknown",
+                        "supervisor_name": job.supervisor.name if job.supervisor else "Unknown",
+                        "start_date": job.start_date.isoformat() if job.start_date else None
+                    }
+                    for job in matching_jobs
+                ]
+                
+                # Invalidate cache
+                try:
+                    cache_invalidation.invalidate_invoice_data(invoice.id)
+                except Exception as e:
+                    logger.warning(f"Could not invalidate cache: {e}")
+                
+                # Return special response indicating user selection needed
+                return {
+                    "id": invoice.id,
+                    "invoice_number": invoice.invoice_number,
+                    "client_name": invoice.client_name,
+                    "job_type": invoice.job_type,
+                    "job_details": invoice.job_details,
+                    "amount": invoice.amount,
+                    "paid_amount": invoice.paid_amount,
+                    "pending_amount": invoice.pending_amount,
+                    "due_date": invoice.due_date,
+                    "status": invoice.status,
+                    "description": invoice.description,
+                    "converted_to_job": invoice.converted_to_job,
+                    "converted_job_id": invoice.converted_job_id,
+                    "created_at": invoice.created_at,
+                    "updated_at": invoice.updated_at,
+                    "job": None,
+                    "matching_jobs": matching_jobs_data,  # Special field for frontend
+                    "requires_job_selection": True  # Flag for frontend
+                }
+                
             else:
-                print(f"❌ Conversion returned None for invoice #{invoice.invoice_number}")
+                # No matches found - create new job as before
+                logger.info(
+                    f"No matching jobs found for invoice {invoice_id}. Creating new job."
+                )
+                
+                converted_job = await invoice_conversion_service.convert_invoice_to_job(invoice, db)
+                
+                if converted_job:
+                    logger.info(
+                        f"Successfully created job {converted_job.id} from invoice {invoice_id}"
+                    )
+                else:
+                    logger.warning(f"Job creation returned None for invoice {invoice_id}")
+                
+                # Commit the changes
+                db.commit()
+                db.refresh(invoice)
+                
         except Exception as e:
-            print(f"❌ Error converting invoice to job: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error in smart linking for invoice {invoice_id}: {e}", exc_info=True)
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to process invoice payment: {str(e)}"
+            )
     else:
-        print(f"❌ Conversion conditions not met for invoice #{invoice.invoice_number}")
-    
-    # Commit all changes (payment update and potential job conversion)
-    db.commit()
-    db.refresh(invoice)
+        # Just commit payment update without job conversion
+        db.commit()
+        db.refresh(invoice)
+        logger.info(f"Payment updated for invoice {invoice_id} (no job conversion needed)")
     
     # Send payment update notifications in background (fire-and-forget)
     def start_background_notifications():
         try:
-            # Create a new event loop for background task
             import threading
             def run_notifications():
                 try:
@@ -496,16 +738,15 @@ async def update_invoice_payment(
                         invoice_conversion_service.notify_payment_updated(invoice, db, current_user.id)
                     )
                     loop.close()
-                    print(f"✅ Completed payment update notifications for invoice #{invoice.invoice_number}")
+                    logger.info(f"Completed payment update notifications for invoice {invoice_id}")
                 except Exception as e:
-                    print(f"Error in background payment notifications: {e}")
+                    logger.warning(f"Error in background payment notifications: {e}")
             
-            # Start in background thread
             notification_thread = threading.Thread(target=run_notifications, daemon=True)
             notification_thread.start()
-            print(f"✅ Started payment update notifications for invoice #{invoice.invoice_number}")
+            logger.info(f"Started payment update notifications for invoice {invoice_id}")
         except Exception as e:
-            print(f"Error starting payment update notifications: {e}")
+            logger.warning(f"Error starting payment update notifications: {e}")
     
     start_background_notifications()
     
@@ -513,7 +754,7 @@ async def update_invoice_payment(
     try:
         cache_invalidation.invalidate_invoice_data(invoice.id)
     except Exception as e:
-        print(f"Warning: Could not invalidate cache: {e}")
+        logger.warning(f"Could not invalidate cache: {e}")
     
     # Prepare response
     response_data = {

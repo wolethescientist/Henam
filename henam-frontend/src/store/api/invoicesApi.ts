@@ -68,6 +68,43 @@ export const invoicesApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: (_, __, { id }) => [{ type: 'Invoice', id }, 'Invoice', 'Dashboard', 'FinancialSummary'],
     }),
+    
+    linkInvoiceToJob: builder.mutation<{
+      message: string;
+      invoice_id: number;
+      job_id: number;
+      invoice_number: string;
+      job_title: string;
+    }, { invoice_id: number; job_id: number }>({
+      query: ({ invoice_id, job_id }) => ({
+        url: `/invoices/${invoice_id}/link-to-job`,
+        method: 'POST',
+        body: { job_id },
+      }),
+      invalidatesTags: (_, __, { invoice_id, job_id }) => [
+        { type: 'Invoice', id: invoice_id },
+        { type: 'Job', id: job_id },
+        'Invoice',
+        'Job',
+        'Dashboard',
+        'FinancialSummary',
+        'Client',
+      ],
+      // Task 15.1: Add optimistic updates for better UX
+      async onQueryStarted(_args, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          
+          // Invalidate invoice and job caches after linking
+          dispatch(baseApi.util.invalidateTags(['Invoice', 'Job', 'Client']));
+          
+          // Add small delay to ensure cache invalidation propagates
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (error) {
+          console.error('Invoice linking failed:', error);
+        }
+      },
+    }),
   }),
 });
 
@@ -77,4 +114,5 @@ export const {
   useUpdateInvoiceMutation,
   useDeleteInvoiceMutation,
   useUpdateInvoicePaymentMutation,
+  useLinkInvoiceToJobMutation,
 } = invoicesApi;

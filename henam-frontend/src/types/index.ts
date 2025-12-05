@@ -177,6 +177,10 @@ export interface Job {
   invoices?: Invoice[];
   created_at: string;
   updated_at: string;
+  creation_source?: 'MANUAL' | 'AUTO_FROM_INVOICE';
+  originating_invoice_id?: number;
+  duplicate_override?: boolean;
+  duplicate_justification?: string;
 }
 
 // Job Display Response for Dashboard
@@ -234,6 +238,18 @@ export interface Invoice {
   pdf_path?: string;
   created_at: string;
   updated_at: string;
+  // Smart linking fields (returned when multiple matching jobs found)
+  matching_jobs?: Array<{
+    id: number;
+    title: string;
+    client: string;
+    status: string;
+    progress: number;
+    team_name: string;
+    supervisor_name: string;
+    start_date: string;
+  }>;
+  requires_job_selection?: boolean;  // Flag indicating user needs to select a job
 }
 
 // Attendance types
@@ -436,6 +452,8 @@ export interface CreateJobForm {
   end_date: string;
   team_id: number;
   assigner_id?: number;
+  skip_duplicate_check?: boolean;
+  duplicate_justification?: string;
 }
 
 

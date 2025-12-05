@@ -6,7 +6,11 @@ from pydantic import BaseModel
 import logging
 from app.database import get_db
 from app.models import Job, User, Team, Notification, NotificationType, NotificationStatus, EfficiencyScore, JobStatus
-from app.schemas import JobCreate, JobUpdate, JobResponse, JobAssignmentRequest, JobAssignmentResponse, JobDisplayResponse, PaginatedResponse
+from app.schemas import (
+    JobCreate, JobUpdate, JobResponse, JobAssignmentRequest, JobAssignmentResponse, 
+    JobDisplayResponse, PaginatedResponse, DuplicateCheckRequest, DuplicateCheckResponse,
+    ClientSummary, AuditLogEntry
+)
 from app.auth import get_current_user
 from app.utils.query_optimizer import QueryOptimizer
 from app.utils.database_utils import DatabaseUtils, safe_get_by_id, safe_paginate
@@ -30,65 +34,117 @@ class ProgressUpdate(BaseModel):
 @router.post("/", response_model=JobResponse)
 def create_job(
     job_data: JobCreate,
+    skip_duplicate_check: bool = False,
+    duplicate_justification: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Create a new job."""
-    # Verify team exists
-    team = db.query(Team).filter(Team.id == job_data.team_id).first()
-    if not team:
+    """
+    Create a new job manually.
+    
+    Parameters:
+    - job_data: Job creation data (title, client, dates, team, supervisor)
+    - skip_duplicate_check: Set to True to bypass duplicate warning (default: False)
+    - duplicate_justification: Required if skip_duplicate_check is True
+    
+    Returns:
+    - Created job with creation_source set to MANUAL
+    
+    Raises:
+    - 400: Validation error (missing fields, invalid dates, missing justification)
+    - 404: Team or supervisor not found
+    - 409: Duplicate jobs found (if not skipped)
+    """
+    try:
+        from app.services.job_creation_service import job_creation_service
+        from app.exceptions import ValidationError, ResourceNotFoundError, BusinessLogicError
+        
+        logger.info(
+            f"Job creation request from user {current_user.id}: "
+            f"title='{job_data.title}', client='{job_data.client}', "
+            f"skip_duplicate_check={skip_duplicate_check}"
+        )
+        
+        # Validate justification is provided when skipping duplicate check (subtask 6.1)
+        if skip_duplicate_check and not duplicate_justification:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Justification is required when creating a job despite duplicate warning"
+            )
+        
+        # Use JobCreationService to create the job
+        db_job = job_creation_service.create_job_manual(
+            job_data=job_data,
+            current_user=current_user,
+            db=db,
+            skip_duplicate_check=skip_duplicate_check,
+            duplicate_justification=duplicate_justification
+        )
+        
+        logger.info(
+            f"Job {db_job.id} created successfully by user {current_user.id}. "
+            f"Creation source: {db_job.creation_source.value}"
+        )
+        
+        # Send notification asynchronously (non-blocking)
+        try:
+            asyncio.create_task(notification_service.notify_job_created(db_job, db))
+            logger.info(f"Job creation notification queued for job {db_job.id}")
+        except Exception as e:
+            logger.warning(f"Could not queue job creation notification: {e}")
+            # Don't fail job creation if notification fails
+        
+        # Invalidate related cache entries
+        try:
+            cache_invalidation.invalidate_job_data(db_job.id)
+            logger.debug(f"Cache invalidated for job {db_job.id}")
+        except Exception as e:
+            logger.warning(f"Could not invalidate cache for job {db_job.id}: {e}")
+            # Don't fail job creation if cache invalidation fails
+        
+        # Reload job with relationships for complete response
+        from sqlalchemy.orm import joinedload
+        db.expire_all()
+        complete_job = db.query(Job).options(
+            joinedload(Job.supervisor),
+            joinedload(Job.assigner),
+            joinedload(Job.team)
+        ).filter(Job.id == db_job.id).first()
+        
+        return complete_job
+        
+    except ValidationError as e:
+        # Validation errors (400)
+        logger.warning(f"Validation error creating job: {e.detail}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Team not found"
+            detail=e.detail
         )
-    
-    # Single-user system - allow access
-    # Use provided supervisor_id or current user as supervisor
-    supervisor_id = job_data.supervisor_id if job_data.supervisor_id else current_user.id
-    
-    # Set the assigner to the current user
-    job_dict = job_data.dict()
-    job_dict['assigner_id'] = current_user.id
-    
-    db_job = Job(
-        title=job_data.title,
-        client=job_data.client,
-        start_date=job_data.start_date,
-        end_date=job_data.end_date,
-        team_id=job_data.team_id,
-        supervisor_id=supervisor_id,
-        assigner_id=current_user.id
-    )
-    
-    db.add(db_job)
-    db.commit()
-    db.refresh(db_job)
-    
-    # Send notification asynchronously
-    print(f"🚀 JOB CREATION DEBUG: Starting notification process for job {db_job.id}")
-    print(f"🚀 JOB CREATION DEBUG: Job title: {db_job.title}")
-    print(f"🚀 JOB CREATION DEBUG: Job client: {db_job.client}")
-    print(f"🚀 JOB CREATION DEBUG: Assigner ID: {db_job.assigner_id}")
-    print(f"🚀 JOB CREATION DEBUG: Supervisor ID: {db_job.supervisor_id}")
-    print(f"🚀 JOB CREATION DEBUG: Team ID: {db_job.team_id}")
-    
-    # Send notification asynchronously (non-blocking)
-    try:
-        asyncio.create_task(notification_service.notify_job_created(db_job, db))
-        logger.info(f"Job creation notification queued for job {db_job.id}")
+    except ResourceNotFoundError as e:
+        # Resource not found errors (404)
+        logger.warning(f"Resource not found creating job: {e.detail}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=e.detail
+        )
+    except BusinessLogicError as e:
+        # Duplicate detection errors (409 Conflict)
+        logger.info(f"Duplicate jobs detected for job creation: {e.detail}")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=e.detail,
+            headers={"X-Duplicate-Context": str(e.context)}
+        )
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        logger.warning(f"Could not queue job creation notification: {e}")
-        # Don't fail job creation if notification fails
-    
-    # Invalidate related cache entries
-    try:
-        cache_invalidation.invalidate_job_data(db_job.id)
-        logger.debug(f"Cache invalidated for job {db_job.id}")
-    except Exception as e:
-        logger.warning(f"Could not invalidate cache for job {db_job.id}: {e}")
-        # Don't fail job creation if cache invalidation fails
-    
-    return db_job
+        # Unexpected errors (500)
+        logger.error(f"Unexpected error creating job: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create job due to an unexpected error"
+        )
 
 
 @router.get("/", response_model=PaginatedResponse[JobResponse])
@@ -1106,6 +1162,325 @@ def get_job_assignment_options(
             operation="get_job_assignment_options",
             context={"error_type": type(e).__name__}
         )
+
+
+@router.post("/check-duplicates", response_model=DuplicateCheckResponse)
+def check_job_duplicates(
+    check_data: DuplicateCheckRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Check for duplicate jobs before creation.
+    Returns matching jobs and repeat project info.
+    """
+    try:
+        from app.services.job_duplicate_service import job_duplicate_service
+        from app.schemas import DuplicateCheckRequest, DuplicateCheckResponse
+        
+        logger.info(
+            f"Duplicate check requested by user {current_user.id} for "
+            f"client: {check_data.client_name}, title: {check_data.job_title}"
+        )
+        
+        # Perform duplicate check
+        result = job_duplicate_service.check_for_duplicates(
+            client_name=check_data.client_name,
+            job_title=check_data.job_title,
+            db=db
+        )
+        
+        logger.info(
+            f"Duplicate check completed: has_duplicates={result.has_duplicates}, "
+            f"is_repeat_project={result.is_repeat_project}, "
+            f"matching_jobs_count={len(result.matching_jobs)}"
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error checking for duplicates: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to check for duplicate jobs"
+        )
+
+
+@router.get("/clients", response_model=List[ClientSummary])
+@cache_route(resource_type="job", ttl=300)  # 5 minutes TTL
+async def get_all_clients(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    """
+    Get list of all unique clients with job counts and financial summary.
+    Used for client autocomplete and grouping.
+    """
+    try:
+        from sqlalchemy import func, case
+        from app.models import Invoice
+        from app.schemas import ClientSummary
+        
+        logger.info(f"Fetching client list for user {current_user.id}")
+        
+        # Query to get client summaries with aggregated data
+        # Group by client and calculate metrics
+        client_data = db.query(
+            Job.client.label('client_name'),
+            func.count(Job.id).label('total_jobs'),
+            func.sum(
+                case(
+                    (Job.status.in_([JobStatus.NOT_STARTED, JobStatus.IN_PROGRESS]), 1),
+                    else_=0
+                )
+            ).label('active_jobs'),
+            func.sum(
+                case(
+                    (Job.status == JobStatus.COMPLETED, 1),
+                    else_=0
+                )
+            ).label('completed_jobs'),
+            func.max(Job.start_date).label('last_job_date')
+        ).group_by(Job.client).all()
+        
+        # Build client summaries with financial data
+        client_summaries = []
+        for client in client_data:
+            # Get financial data from invoices for this client
+            financial_data = db.query(
+                func.coalesce(func.sum(Invoice.amount), 0).label('total_billed'),
+                func.coalesce(func.sum(Invoice.paid_amount), 0).label('total_paid')
+            ).filter(
+                func.lower(Invoice.client_name) == func.lower(client.client_name)
+            ).first()
+            
+            total_billed = float(financial_data.total_billed) if financial_data else 0.0
+            total_paid = float(financial_data.total_paid) if financial_data else 0.0
+            total_pending = total_billed - total_paid
+            
+            client_summaries.append(ClientSummary(
+                client_name=client.client_name,
+                total_jobs=int(client.total_jobs),
+                active_jobs=int(client.active_jobs or 0),
+                completed_jobs=int(client.completed_jobs or 0),
+                total_billed=total_billed,
+                total_paid=total_paid,
+                total_pending=total_pending,
+                last_job_date=client.last_job_date
+            ))
+        
+        # Sort by last job date (most recent first)
+        client_summaries.sort(key=lambda x: x.last_job_date or datetime.min, reverse=True)
+        
+        logger.info(f"Retrieved {len(client_summaries)} unique clients")
+        return client_summaries
+        
+    except SQLAlchemyError as e:
+        logger.error(f"Database error retrieving clients", exc_info=True)
+        raise DatabaseError(
+            detail="Failed to retrieve client list",
+            operation="get_all_clients",
+            context={}
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error retrieving clients: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve client list"
+        )
+
+
+@router.get("/by-client/{client_name}", response_model=PaginatedResponse[JobResponse])
+async def get_jobs_by_client(
+    client_name: str,
+    include_completed: bool = False,
+    page: int = 1,
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get all jobs for a specific client.
+    Used for client grouping view.
+    """
+    try:
+        from sqlalchemy.orm import joinedload
+        from sqlalchemy import func
+        
+        logger.info(
+            f"Fetching jobs for client: {client_name}, "
+            f"include_completed={include_completed}, page={page}"
+        )
+        
+        # Build query with relationships
+        query = db.query(Job).options(
+            joinedload(Job.supervisor),
+            joinedload(Job.assigner),
+            joinedload(Job.team)
+        ).filter(
+            func.lower(Job.client) == func.lower(client_name.strip())
+        )
+        
+        # Filter by status if not including completed
+        if not include_completed:
+            query = query.filter(
+                Job.status.in_([JobStatus.NOT_STARTED, JobStatus.IN_PROGRESS])
+            )
+        
+        # Get total count
+        total_count = query.count()
+        
+        # Apply pagination and sorting (newest first)
+        offset = (page - 1) * limit
+        jobs = query.order_by(Job.created_at.desc()).offset(offset).limit(limit).all()
+        
+        logger.info(f"Retrieved {len(jobs)} jobs for client {client_name} (total: {total_count})")
+        
+        return PaginatedResponse(
+            items=jobs,
+            total_count=total_count,
+            page=page,
+            limit=limit,
+            total_pages=(total_count + limit - 1) // limit
+        )
+        
+    except SQLAlchemyError as e:
+        logger.error(f"Database error retrieving jobs for client {client_name}", exc_info=True)
+        raise DatabaseError(
+            detail=f"Failed to retrieve jobs for client {client_name}",
+            operation="get_jobs_by_client",
+            context={"client_name": client_name}
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error retrieving jobs for client {client_name}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve jobs for client {client_name}"
+        )
+
+
+@router.get("/{job_id}/audit-log", response_model=PaginatedResponse[AuditLogEntry])
+async def get_job_audit_log(
+    job_id: int,
+    page: int = 1,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get complete audit trail for a job.
+    Returns formatted audit events in chronological order.
+    """
+    try:
+        from app.models import JobAuditLog
+        from app.schemas import AuditLogEntry
+        import json
+        
+        logger.info(f"Fetching audit log for job {job_id}, page={page}")
+        
+        # Verify job exists
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            raise ResourceNotFoundError(
+                detail="Job not found",
+                resource_type="Job",
+                resource_id=job_id
+            )
+        
+        # Query audit logs with user relationship
+        query = db.query(JobAuditLog).filter(
+            JobAuditLog.job_id == job_id
+        ).order_by(JobAuditLog.timestamp.desc())
+        
+        # Get total count
+        total_count = query.count()
+        
+        # Apply pagination
+        offset = (page - 1) * limit
+        audit_logs = query.offset(offset).limit(limit).all()
+        
+        # Convert to AuditLogEntry format
+        audit_entries = []
+        for log in audit_logs:
+            # Parse event_data if it's a JSON string
+            event_data = None
+            if log.event_data:
+                try:
+                    event_data = json.loads(log.event_data) if isinstance(log.event_data, str) else log.event_data
+                except json.JSONDecodeError:
+                    event_data = {"raw": log.event_data}
+            
+            # Generate human-readable description
+            description = _format_audit_log_description(log.event_type.value, event_data)
+            
+            audit_entries.append(AuditLogEntry(
+                id=log.id,
+                event_type=log.event_type.value,
+                user_name=log.user.name if log.user else "System",
+                timestamp=log.timestamp,
+                event_data=event_data,
+                description=description
+            ))
+        
+        logger.info(f"Retrieved {len(audit_entries)} audit log entries for job {job_id}")
+        
+        return PaginatedResponse(
+            items=audit_entries,
+            total_count=total_count,
+            page=page,
+            limit=limit,
+            total_pages=(total_count + limit - 1) // limit
+        )
+        
+    except ResourceNotFoundError as e:
+        raise e
+    except SQLAlchemyError as e:
+        logger.error(f"Database error retrieving audit log for job {job_id}", exc_info=True)
+        raise DatabaseError(
+            detail="Failed to retrieve audit log",
+            operation="get_job_audit_log",
+            context={"job_id": job_id}
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error retrieving audit log for job {job_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve audit log"
+        )
+
+
+def _format_audit_log_description(event_type: str, event_data: dict) -> str:
+    """Format audit log event into human-readable description."""
+    if event_type == "JOB_CREATED":
+        source = event_data.get("creation_source", "MANUAL") if event_data else "MANUAL"
+        if source == "AUTO_FROM_INVOICE":
+            invoice_id = event_data.get("originating_invoice_id") if event_data else None
+            return f"Job created automatically from invoice #{invoice_id}" if invoice_id else "Job created automatically from invoice"
+        return "Job created manually"
+    
+    elif event_type == "DUPLICATE_WARNING_SHOWN":
+        count = event_data.get("duplicate_count", 0) if event_data else 0
+        return f"Duplicate warning shown ({count} similar job(s) found)"
+    
+    elif event_type == "DUPLICATE_OVERRIDE":
+        justification = event_data.get("justification", "No justification provided") if event_data else "No justification provided"
+        return f"Duplicate warning overridden: {justification}"
+    
+    elif event_type == "INVOICE_LINKED":
+        invoice_id = event_data.get("invoice_id") if event_data else None
+        return f"Invoice #{invoice_id} linked to job" if invoice_id else "Invoice linked to job"
+    
+    elif event_type == "JOB_UPDATED":
+        changes = event_data.get("changes", "Unknown changes") if event_data else "Unknown changes"
+        return f"Job updated: {changes}"
+    
+    elif event_type == "JOB_MERGED":
+        merged_from = event_data.get("merged_from_job_id") if event_data else None
+        return f"Job merged from job #{merged_from}" if merged_from else "Job merged"
+    
+    else:
+        return f"Event: {event_type}"
 
 
 @router.get("/{job_id}", response_model=JobResponse)

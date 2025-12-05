@@ -27,6 +27,8 @@ import {
   ToggleButtonGroup,
   Collapse,
   IconButton,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -42,12 +44,14 @@ import {
   FilterList,
   ExpandMore,
   ExpandLess,
+  History,
 } from '@mui/icons-material';
 import { useAppSelector } from '../../hooks/redux';
 import { useGetUnifiedDashboardQuery } from '../../store/api/dashboardApi';
 import KebabMenu from '../../components/common/KebabMenu';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import CalendarView from '../../components/dashboard/CalendarView';
+import JobAuditLogViewer from '../../components/jobs/JobAuditLogViewer';
 import DateRangeFilter, { type DateFilterValue } from '../../components/common/DateRangeFilter';
 import { useNavigate } from 'react-router-dom';
 import { useAuthErrorHandlerForQuery } from '../../hooks/useAuthErrorHandler';
@@ -128,17 +132,24 @@ const OptimizedAdminDashboardPage: React.FC = () => {
   // Job details dialog state
   const [jobDetailsOpen, setJobDetailsOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<any>(null);
+  const [jobDetailsTab, setJobDetailsTab] = useState(0);
 
   // Handle job details dialog
   const handleViewJobDetails = (job: any) => {
     console.log('Job data structure:', job); // Debug log to see available fields
     setSelectedJob(job);
     setJobDetailsOpen(true);
+    setJobDetailsTab(0); // Reset to first tab
   };
 
   const handleCloseJobDetails = () => {
     setJobDetailsOpen(false);
     setSelectedJob(null);
+    setJobDetailsTab(0);
+  };
+
+  const handleJobDetailsTabChange = (_event: React.SyntheticEvent, newValue: number) => {
+    setJobDetailsTab(newValue);
   };
 
   const handleViewModeChange = (
@@ -843,19 +854,31 @@ const OptimizedAdminDashboardPage: React.FC = () => {
           }}>
             Job Details
           </DialogTitle>
+          
+          {/* Tabs */}
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3 }}>
+            <Tabs value={jobDetailsTab} onChange={handleJobDetailsTabChange}>
+              <Tab label="Overview" icon={<Work />} iconPosition="start" />
+              <Tab label="Audit Log" icon={<History />} iconPosition="start" />
+            </Tabs>
+          </Box>
+
           <DialogContent sx={{ pt: 2 }}>
             {selectedJob && (
               <Box>
-                <Box sx={{ mb: 3 }}>
-                  <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, color: 'primary.main' }}>
-                    {selectedJob.title}
-                  </Typography>
-                  <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-                    {selectedJob.description}
-                  </Typography>
-                </Box>
+                {/* Overview Tab */}
+                {jobDetailsTab === 0 && (
+                  <Box>
+                    <Box sx={{ mb: 3 }}>
+                      <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, color: 'primary.main' }}>
+                        {selectedJob.title}
+                      </Typography>
+                      <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+                        {selectedJob.description}
+                      </Typography>
+                    </Box>
 
-                <Divider sx={{ my: 2 }} />
+                    <Divider sx={{ my: 2 }} />
 
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' }, gap: 2, mb: 3 }}>
                   <Box>
@@ -949,18 +972,27 @@ const OptimizedAdminDashboardPage: React.FC = () => {
                   </Box>
                 </Box>
 
-                {selectedJob.budget && (
-                  <>
-                    <Divider sx={{ my: 2 }} />
-                    <Box>
-                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                        Budget
-                      </Typography>
-                      <Typography variant="h6" sx={{ fontWeight: 600, color: 'success.main' }}>
-                        ₦{selectedJob.budget?.toLocaleString()}
-                      </Typography>
-                    </Box>
-                  </>
+                    {selectedJob.budget && (
+                      <>
+                        <Divider sx={{ my: 2 }} />
+                        <Box>
+                          <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                            Budget
+                          </Typography>
+                          <Typography variant="h6" sx={{ fontWeight: 600, color: 'success.main' }}>
+                            ₦{selectedJob.budget?.toLocaleString()}
+                          </Typography>
+                        </Box>
+                      </>
+                    )}
+                  </Box>
+                )}
+
+                {/* Audit Log Tab */}
+                {jobDetailsTab === 1 && selectedJob.id && (
+                  <Box>
+                    <JobAuditLogViewer jobId={selectedJob.id} />
+                  </Box>
                 )}
               </Box>
             )}

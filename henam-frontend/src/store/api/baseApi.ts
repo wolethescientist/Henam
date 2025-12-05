@@ -163,6 +163,7 @@ export const baseApi = createApi({
     'Expense',
     'ExpenseCategory',
     'FinancialAnalytics',
+    'Client',
   ],
   endpoints: () => ({}),
 });

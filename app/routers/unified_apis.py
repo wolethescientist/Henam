@@ -15,9 +15,11 @@ from app.services.cache_middleware import cache_route
 from app.services.cache_invalidation import cache_invalidation
 from app.utils.performance_monitor import monitor_api_response_time
 from app.utils.query_optimizer import QueryOptimizer
-from app.schemas import UnifiedInvoicesResponse
+from app.schemas import UnifiedInvoicesResponse, ClientSummary, AuditLogEntry, DuplicateCheckRequest, DuplicateCheckResponse
 from app.exceptions import DatabaseError, ValidationError
 from app.utils.error_handler import ErrorHandler
+from app.services.job_duplicate_service import job_duplicate_service
+from app.services.job_audit_service import job_audit_service
 
 logger = logging.getLogger(__name__)
 
@@ -618,4 +620,259 @@ async def get_staff_dropdown_data(
             detail="Dropdown data retrieval failed",
             operation="get_staff_dropdown_data",
             context={"error_type": type(e).__name__}
+        )
+
+
+@router.post("/jobs/check-duplicates", response_model=DuplicateCheckResponse)
+@monitor_api_response_time(threshold_seconds=0.5)
+async def check_job_duplicates(
+    request: DuplicateCheckRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Check for duplicate jobs before creation.
+    Returns matching active jobs and repeat project information.
+    """
+    try:
+        result = job_duplicate_service.check_for_duplicates(
+            client_name=request.client_name,
+            job_title=request.job_title,
+            db=db
+        )
+        
+        logger.info(
+            f"Duplicate check for client '{request.client_name}', title '{request.job_title}': "
+            f"{len(result.matching_jobs)} matches, repeat_project={result.is_repeat_project}"
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error checking for duplicates: {e}", exc_info=True)
+        raise DatabaseError(
+            detail="Failed to check for duplicate jobs",
+            operation="check_job_duplicates",
+            context={"client": request.client_name, "title": request.job_title}
+        )
+
+
+@router.get("/jobs/clients")
+@cache_route(resource_type="job", ttl=300)  # 5 minutes TTL
+@monitor_api_response_time(threshold_seconds=1.0)
+async def get_clients_list(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    """
+    Get unique clients with job counts and financial summary.
+    Optimized query with caching.
+    """
+    try:
+        # Query to get client summaries
+        client_data = db.query(
+            Job.client.label('client_name'),
+            func.count(Job.id).label('total_jobs'),
+            func.sum(case((Job.status.in_([JobStatus.NOT_STARTED, JobStatus.IN_PROGRESS]), 1), else_=0)).label('active_jobs'),
+            func.sum(case((Job.status == JobStatus.COMPLETED, 1), else_=0)).label('completed_jobs'),
+            func.max(Job.start_date).label('last_job_date')
+        ).group_by(Job.client).order_by(desc('last_job_date')).all()
+        
+        # Get financial data for each client
+        clients = []
+        for row in client_data:
+            # Get invoices for this client's jobs
+            invoice_data = db.query(
+                func.coalesce(func.sum(Invoice.amount), 0).label('total_billed'),
+                func.coalesce(func.sum(Invoice.paid_amount), 0).label('total_paid')
+            ).join(Job, Invoice.job_id == Job.id).filter(
+                Job.client == row.client_name
+            ).first()
+            
+            clients.append(ClientSummary(
+                client_name=row.client_name,
+                total_jobs=row.total_jobs,
+                active_jobs=row.active_jobs,
+                completed_jobs=row.completed_jobs,
+                total_billed=invoice_data.total_billed if invoice_data else 0.0,
+                total_paid=invoice_data.total_paid if invoice_data else 0.0,
+                total_pending=(invoice_data.total_billed - invoice_data.total_paid) if invoice_data else 0.0,
+                last_job_date=row.last_job_date
+            ))
+        
+        logger.info(f"Retrieved {len(clients)} unique clients")
+        
+        return {
+            "clients": clients,
+            "total_count": len(clients)
+        }
+        
+    except SQLAlchemyError as e:
+        logger.error(f"Database error retrieving clients list", exc_info=True)
+        raise DatabaseError(
+            detail="Failed to retrieve clients list",
+            operation="get_clients_list",
+            context={}
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error retrieving clients list: {e}", exc_info=True)
+        raise DatabaseError(
+            detail="Clients list retrieval failed",
+            operation="get_clients_list",
+            context={"error_type": type(e).__name__}
+        )
+
+
+@router.get("/jobs/by-client/{client_name}")
+@cache_route(resource_type="job", ttl=300)  # 5 minutes TTL
+@monitor_api_response_time(threshold_seconds=1.0)
+async def get_jobs_by_client(
+    client_name: str,
+    include_completed: bool = False,
+    page: int = 1,
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    """
+    Get all jobs for a specific client with pagination.
+    Optionally include completed jobs.
+    """
+    try:
+        # Base query with eager loading
+        query = db.query(Job).options(
+            joinedload(Job.team),
+            joinedload(Job.supervisor),
+            joinedload(Job.assigner)
+        ).filter(func.lower(Job.client) == func.lower(client_name.strip()))
+        
+        # Filter by status if not including completed
+        if not include_completed:
+            query = query.filter(
+                or_(
+                    Job.status == JobStatus.NOT_STARTED,
+                    Job.status == JobStatus.IN_PROGRESS
+                )
+            )
+        
+        # Get total count
+        total_count = query.count()
+        
+        # Apply pagination
+        offset = (page - 1) * limit
+        jobs = query.order_by(desc(Job.created_at)).offset(offset).limit(limit).all()
+        
+        logger.info(
+            f"Retrieved {len(jobs)} jobs for client '{client_name}' "
+            f"(include_completed={include_completed}, page={page})"
+        )
+        
+        return {
+            "jobs": jobs,
+            "client_name": client_name,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": (total_count + limit - 1) // limit,
+                "has_next": page * limit < total_count,
+                "has_previous": page > 1
+            }
+        }
+        
+    except SQLAlchemyError as e:
+        logger.error(f"Database error retrieving jobs for client '{client_name}'", exc_info=True)
+        raise DatabaseError(
+            detail="Failed to retrieve jobs for client",
+            operation="get_jobs_by_client",
+            context={"client_name": client_name, "page": page, "limit": limit}
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error retrieving jobs for client '{client_name}': {e}", exc_info=True)
+        raise DatabaseError(
+            detail="Jobs by client retrieval failed",
+            operation="get_jobs_by_client",
+            context={"client_name": client_name, "error_type": type(e).__name__}
+        )
+
+
+@router.get("/jobs/{job_id}/audit-log")
+@monitor_api_response_time(threshold_seconds=0.5)
+async def get_job_audit_log(
+    job_id: int,
+    page: int = 1,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get audit log for a specific job with pagination.
+    Returns formatted audit trail entries.
+    """
+    try:
+        # Verify job exists
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Job not found"
+            )
+        
+        # Get audit log entries (returns formatted dictionaries)
+        formatted_logs = job_audit_service.get_job_audit_log(
+            job_id=job_id,
+            db=db,
+            limit=limit,
+            offset=(page - 1) * limit
+        )
+        
+        # Get total count
+        from app.models import JobAuditLog
+        total_count = db.query(JobAuditLog).filter(JobAuditLog.job_id == job_id).count()
+        
+        # Convert to AuditLogEntry schema
+        formatted_entries = []
+        for log in formatted_logs:
+            formatted_entries.append(AuditLogEntry(
+                id=log.get("id"),
+                event_type=log.get("event_type"),
+                user_name=log.get("user_name"),
+                timestamp=datetime.fromisoformat(log.get("timestamp")) if log.get("timestamp") else datetime.now(),
+                event_data=log.get("event_data"),
+                description=log.get("description")
+            ))
+        
+        logger.info(f"Retrieved {len(formatted_entries)} audit log entries for job {job_id}")
+        
+        return {
+            "audit_log": formatted_entries,
+            "job_id": job_id,
+            "job_title": job.title,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": (total_count + limit - 1) // limit,
+                "has_next": page * limit < total_count,
+                "has_previous": page > 1
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error retrieving audit log for job {job_id}", exc_info=True)
+        raise DatabaseError(
+            detail="Failed to retrieve job audit log",
+            operation="get_job_audit_log",
+            context={"job_id": job_id, "page": page, "limit": limit}
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error retrieving audit log for job {job_id}: {e}", exc_info=True)
+        raise DatabaseError(
+            detail="Job audit log retrieval failed",
+            operation="get_job_audit_log",
+            context={"job_id": job_id, "error_type": type(e).__name__}
         )

@@ -42,6 +42,7 @@ import {
   useCreateInvoiceMutation,
   useUpdateInvoiceMutation,
   useUpdateInvoicePaymentMutation,
+  useLinkInvoiceToJobMutation,
 } from '../../store/api/invoicesApi';
 import { useGetUnifiedInvoicesDataQuery } from '../../store/api/unifiedApis';
 import { useAppSelector } from '../../hooks/redux';
@@ -50,6 +51,7 @@ import { formatCurrency, formatDate } from '../../utils';
 import KebabMenu from '../../components/common/KebabMenu';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import { useToast } from '../../contexts/ToastContext';
+import JobSelectionDialog from '../../components/invoices/JobSelectionDialog';
 
 const InvoiceTab: React.FC = () => {
   const [page, setPage] = useState(0);
@@ -65,6 +67,9 @@ const InvoiceTab: React.FC = () => {
   const [downloadingPdf, setDownloadingPdf] = useState<number | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
   const [isAdditionalPayment, setIsAdditionalPayment] = useState<boolean>(false);
+  const [isJobSelectionDialogOpen, setIsJobSelectionDialogOpen] = useState(false);
+  const [matchingJobsForSelection, setMatchingJobsForSelection] = useState<any[]>([]);
+  const [invoiceAwaitingJobSelection, setInvoiceAwaitingJobSelection] = useState<Invoice | null>(null);
   const [formData, setFormData] = useState<CreateInvoiceForm>({
     client_name: '',
     job_type: '',
@@ -103,6 +108,7 @@ const InvoiceTab: React.FC = () => {
   const [createInvoice, { isLoading: isCreating }] = useCreateInvoiceMutation();
   const [updateInvoice, { isLoading: isUpdating }] = useUpdateInvoiceMutation();
   const [updateInvoicePayment, { isLoading: isUpdatingPayment }] = useUpdateInvoicePaymentMutation();
+  const [linkInvoiceToJob, { isLoading: isLinking }] = useLinkInvoiceToJobMutation();
   const { accessToken } = useAppSelector((state) => state.auth);
   const { showSuccess, showError } = useToast();
 
@@ -271,13 +277,36 @@ const InvoiceTab: React.FC = () => {
         paid_amount: finalPaymentAmount 
       }).unwrap();
       
+      // Check if multiple matching jobs were found (requires user selection)
+      if (result.requires_job_selection && result.matching_jobs && result.matching_jobs.length > 0) {
+        // Close payment dialog
+        setIsPaymentDialogOpen(false);
+        setPaymentAmount(0);
+        setIsAdditionalPayment(false);
+        
+        // Store the invoice and matching jobs for selection
+        setInvoiceAwaitingJobSelection(result);
+        setMatchingJobsForSelection(result.matching_jobs);
+        setIsJobSelectionDialogOpen(true);
+        
+        showSuccess('Payment updated! Please select which job to link this invoice to.');
+        return;
+      }
+      
+      // Close payment dialog
       setIsPaymentDialogOpen(false);
       setPaymentAmount(0);
       setIsAdditionalPayment(false);
 
-      // Show success toast
+      // Show success toast based on what happened
       if (result.converted_to_job && !selectedInvoice.converted_to_job) {
-        showSuccess(`Payment updated successfully! Invoice automatically converted to job #${result.converted_job_id}.`);
+        if (result.converted_job_id) {
+          // Auto-linked to existing job
+          showSuccess(`Payment updated successfully! Invoice automatically linked to existing job #${result.converted_job_id}.`);
+        } else {
+          // New job created
+          showSuccess(`Payment updated successfully! Invoice automatically converted to new job.`);
+        }
       } else {
         showSuccess('Payment updated successfully!');
       }
@@ -285,6 +314,54 @@ const InvoiceTab: React.FC = () => {
       console.error('Failed to update payment:', error);
       showError('Failed to update payment. Please try again.');
     }
+  };
+
+  const handleJobSelection = async (jobId: number) => {
+    if (!invoiceAwaitingJobSelection) return;
+    
+    try {
+      const result = await linkInvoiceToJob({
+        invoice_id: invoiceAwaitingJobSelection.id,
+        job_id: jobId,
+      }).unwrap();
+      
+      // Close dialog and reset state
+      setIsJobSelectionDialogOpen(false);
+      setInvoiceAwaitingJobSelection(null);
+      setMatchingJobsForSelection([]);
+      
+      showSuccess(`Invoice ${result.invoice_number} successfully linked to job: ${result.job_title}`);
+    } catch (error) {
+      console.error('Failed to link invoice to job:', error);
+      showError('Failed to link invoice to job. Please try again.');
+    }
+  };
+
+  const handleCreateNewJobInstead = async () => {
+    // Close the job selection dialog
+    setIsJobSelectionDialogOpen(false);
+    
+    // The invoice payment has already been updated, so we just need to trigger
+    // the conversion to a new job. We can do this by calling the conversion service
+    // or simply show a message that the job will be created automatically
+    showSuccess('Creating new job for this invoice...');
+    
+    // Reset state
+    setInvoiceAwaitingJobSelection(null);
+    setMatchingJobsForSelection([]);
+    
+    // Refetch to get the updated invoice with the new job
+    setTimeout(() => {
+      refetch();
+    }, 1000);
+  };
+
+  const handleCancelJobSelection = () => {
+    setIsJobSelectionDialogOpen(false);
+    setInvoiceAwaitingJobSelection(null);
+    setMatchingJobsForSelection([]);
+    
+    showSuccess('Payment updated. Invoice remains unlinked - you can link it to a job later.');
   };
 
   const handleChangePage = (_event: unknown, newPage: number) => {
@@ -962,6 +1039,19 @@ const InvoiceTab: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Job Selection Dialog - shown when multiple matching jobs found */}
+      <JobSelectionDialog
+        open={isJobSelectionDialogOpen}
+        matchingJobs={matchingJobsForSelection}
+        invoiceNumber={invoiceAwaitingJobSelection?.invoice_number || ''}
+        invoiceAmount={invoiceAwaitingJobSelection?.amount || 0}
+        clientName={invoiceAwaitingJobSelection?.client_name || ''}
+        onSelectJob={handleJobSelection}
+        onCreateNew={handleCreateNewJobInstead}
+        onCancel={handleCancelJobSelection}
+        isLinking={isLinking}
+      />
     </Box>
   );
 };

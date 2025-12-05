@@ -36,3 +36,5 @@ numpy
 # Utilities
 python-dateutil
 apscheduler
+python-Levenshtein
+fuzzywuzzy

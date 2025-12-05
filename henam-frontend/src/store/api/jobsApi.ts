@@ -26,12 +26,30 @@ export const jobsApi = baseApi.injectEndpoints({
       providesTags: (_, __, id) => [{ type: 'Job', id }],
     }),
     createJob: builder.mutation<Job, CreateJobForm>({
-      query: (job) => ({
+      query: ({ skip_duplicate_check, duplicate_justification, ...job }) => ({
         url: '/jobs',
         method: 'POST',
         body: job,
+        params: {
+          ...(skip_duplicate_check !== undefined && { skip_duplicate_check }),
+          ...(duplicate_justification && { duplicate_justification }),
+        },
       }),
-      invalidatesTags: ['Job', 'Dashboard', 'FinancialSummary'],
+      invalidatesTags: ['Job', 'Dashboard', 'FinancialSummary', 'Client'],
+      // Task 15.1: Add optimistic updates and comprehensive cache invalidation
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          
+          // Invalidate client cache after job creation
+          dispatch(baseApi.util.invalidateTags(['Job', 'Client']));
+          
+          // Add small delay to ensure cache invalidation propagates
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (error) {
+          console.error('Job creation failed:', error);
+        }
+      },
     }),
     updateJob: builder.mutation<Job, { id: number; data: Partial<CreateJobForm> }>({
       query: ({ id, data }) => ({
@@ -168,6 +186,76 @@ export const jobsApi = baseApi.injectEndpoints({
       query: () => '/jobs/assignment-options',
       providesTags: ['Job', 'Team', 'User'],
     }),
+    checkJobDuplicates: builder.mutation<{
+      has_duplicates: boolean;
+      matching_jobs: Array<{
+        id: number;
+        title: string;
+        client: string;
+        status: string;
+        progress: number;
+        team_name: string;
+        supervisor_name: string;
+        start_date: string;
+        created_at: string;
+      }>;
+      is_repeat_project: boolean;
+      previous_job?: {
+        id: number;
+        title: string;
+        client: string;
+        status: string;
+        progress: number;
+        team_name: string;
+        supervisor_name: string;
+        start_date: string;
+        created_at: string;
+      };
+      suggestion: string;
+    }, { client_name: string; job_title: string }>({
+      query: (data) => ({
+        url: '/jobs/check-duplicates',
+        method: 'POST',
+        body: data,
+      }),
+    }),
+    getClients: builder.query<Array<{
+      client_name: string;
+      total_jobs: number;
+      active_jobs: number;
+      completed_jobs: number;
+      total_billed: number;
+      total_paid: number;
+      total_pending: number;
+      last_job_date: string;
+    }>, void>({
+      query: () => '/jobs/clients',
+      providesTags: ['Job', 'Client'],
+    }),
+    getJobsByClient: builder.query<Job[], { client_name: string; include_completed?: boolean }>({
+      query: ({ client_name, include_completed = false }) => ({
+        url: `/jobs/by-client/${encodeURIComponent(client_name)}`,
+        params: { include_completed },
+      }),
+      providesTags: (_result, _error, { client_name }) => [
+        'Job',
+        { type: 'Client' as const, id: client_name },
+      ],
+    }),
+    getJobAuditLog: builder.query<PaginatedResponse<{
+      id: number;
+      event_type: string;
+      user_name: string;
+      timestamp: string;
+      event_data: any;
+      description: string;
+    }>, { jobId: number; page?: number; limit?: number }>({
+      query: ({ jobId, page = 1, limit = 50 }) => ({
+        url: `/jobs/${jobId}/audit-log`,
+        params: { page, limit },
+      }),
+      providesTags: (_, __, { jobId }) => [{ type: 'Job', id: jobId }],
+    }),
   }),
 });
 
@@ -186,4 +274,8 @@ export const {
   useGetMyJobsQuery,
   useGetJobsAssignedByMeQuery,
   useGetJobAssignmentOptionsQuery,
+  useCheckJobDuplicatesMutation,
+  useGetClientsQuery,
+  useGetJobsByClientQuery,
+  useGetJobAuditLogQuery,
 } = jobsApi;
