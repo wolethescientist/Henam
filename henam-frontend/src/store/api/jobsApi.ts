@@ -27,7 +27,7 @@ export const jobsApi = baseApi.injectEndpoints({
     }),
     createJob: builder.mutation<Job, CreateJobForm>({
       query: ({ skip_duplicate_check, duplicate_justification, ...job }) => ({
-        url: '/jobs',
+        url: '/unified/jobs',
         method: 'POST',
         body: job,
         params: {
@@ -214,7 +214,7 @@ export const jobsApi = baseApi.injectEndpoints({
       suggestion: string;
     }, { client_name: string; job_title: string }>({
       query: (data) => ({
-        url: '/jobs/check-duplicates',
+        url: '/unified/jobs/check-duplicates',
         method: 'POST',
         body: data,
       }),
@@ -229,12 +229,12 @@ export const jobsApi = baseApi.injectEndpoints({
       total_pending: number;
       last_job_date: string;
     }>, void>({
-      query: () => '/unified/jobs/clients',
+      query: () => '/jobs/clients',
       providesTags: ['Job', 'Client'],
     }),
     getJobsByClient: builder.query<Job[], { client_name: string; include_completed?: boolean }>({
       query: ({ client_name, include_completed = false }) => ({
-        url: `/jobs/by-client/${encodeURIComponent(client_name)}`,
+        url: `/unified/jobs/by-client/${encodeURIComponent(client_name)}`,
         params: { include_completed },
       }),
       providesTags: (_result, _error, { client_name }) => [
@@ -251,7 +251,7 @@ export const jobsApi = baseApi.injectEndpoints({
       description: string;
     }>, { jobId: number; page?: number; limit?: number }>({
       query: ({ jobId, page = 1, limit = 50 }) => ({
-        url: `/jobs/${jobId}/audit-log`,
+        url: `/unified/jobs/${jobId}/audit-log`,
         params: { page, limit },
       }),
       providesTags: (_, __, { jobId }) => [{ type: 'Job', id: jobId }],

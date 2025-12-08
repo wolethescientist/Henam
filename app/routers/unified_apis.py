@@ -15,11 +15,14 @@ from app.services.cache_middleware import cache_route
 from app.services.cache_invalidation import cache_invalidation
 from app.utils.performance_monitor import monitor_api_response_time
 from app.utils.query_optimizer import QueryOptimizer
-from app.schemas import UnifiedInvoicesResponse, ClientSummary, AuditLogEntry, DuplicateCheckRequest, DuplicateCheckResponse
-from app.exceptions import DatabaseError, ValidationError
+from app.schemas import UnifiedInvoicesResponse, ClientSummary, AuditLogEntry, DuplicateCheckRequest, DuplicateCheckResponse, JobCreate, JobResponse, PaginatedResponse, InvoiceLinkToJob
+from app.exceptions import DatabaseError, ValidationError, ResourceNotFoundError, BusinessLogicError
 from app.utils.error_handler import ErrorHandler
 from app.services.job_duplicate_service import job_duplicate_service
 from app.services.job_audit_service import job_audit_service
+from app.services.job_creation_service import job_creation_service
+from app.services.notification_service import notification_service
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -250,6 +253,120 @@ async def get_unified_jobs_data(
             context={"page": page, "limit": limit, "error_type": type(e).__name__}
         )
 
+
+@router.post("/jobs", response_model=JobResponse)
+@monitor_api_response_time(threshold_seconds=1.0)
+async def create_job_unified(
+    job_data: JobCreate,
+    skip_duplicate_check: bool = False,
+    duplicate_justification: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Create a new job manually (unified API).
+    
+    Parameters:
+    - job_data: Job creation data (title, client, dates, team, supervisor)
+    - skip_duplicate_check: Set to True to bypass duplicate warning (default: False)
+    - duplicate_justification: Required if skip_duplicate_check is True
+    
+    Returns:
+    - Created job with creation_source set to MANUAL
+    
+    Raises:
+    - 400: Validation error (missing fields, invalid dates, missing justification)
+    - 404: Team or supervisor not found
+    - 409: Duplicate jobs found (if not skipped)
+    """
+    try:
+        logger.info(
+            f"[UNIFIED] Job creation request from user {current_user.id}: "
+            f"title='{job_data.title}', client='{job_data.client}', "
+            f"skip_duplicate_check={skip_duplicate_check}"
+        )
+        
+        # Validate justification is provided when skipping duplicate check
+        if skip_duplicate_check and not duplicate_justification:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Justification is required when creating a job despite duplicate warning"
+            )
+        
+        # Use JobCreationService to create the job
+        db_job = job_creation_service.create_job_manual(
+            job_data=job_data,
+            current_user=current_user,
+            db=db,
+            skip_duplicate_check=skip_duplicate_check,
+            duplicate_justification=duplicate_justification
+        )
+        
+        logger.info(
+            f"[UNIFIED] Job {db_job.id} created successfully by user {current_user.id}. "
+            f"Creation source: {db_job.creation_source.value}"
+        )
+        
+        # Send notification asynchronously (non-blocking)
+        try:
+            asyncio.create_task(notification_service.notify_job_created(db_job, db))
+            logger.info(f"[UNIFIED] Job creation notification queued for job {db_job.id}")
+        except Exception as e:
+            logger.warning(f"[UNIFIED] Could not queue job creation notification: {e}")
+            # Don't fail job creation if notification fails
+        
+        # Invalidate related cache entries
+        try:
+            cache_invalidation.invalidate_job_data(db_job.id)
+            logger.debug(f"[UNIFIED] Cache invalidated for job {db_job.id}")
+        except Exception as e:
+            logger.warning(f"[UNIFIED] Could not invalidate cache for job {db_job.id}: {e}")
+            # Don't fail job creation if cache invalidation fails
+        
+        # Reload job with relationships for complete response
+        db.expire_all()
+        complete_job = db.query(Job).options(
+            joinedload(Job.supervisor),
+            joinedload(Job.assigner),
+            joinedload(Job.team)
+        ).filter(Job.id == db_job.id).first()
+        
+        return complete_job
+        
+    except ValidationError as e:
+        # Validation errors (400)
+        logger.warning(f"[UNIFIED] Validation error creating job: {e.detail}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=e.detail
+        )
+    except ResourceNotFoundError as e:
+        # Resource not found errors (404)
+        logger.warning(f"[UNIFIED] Resource not found creating job: {e.detail}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=e.detail
+        )
+    except BusinessLogicError as e:
+        # Duplicate detection errors (409 Conflict)
+        logger.info(f"[UNIFIED] Duplicate jobs detected for job creation: {e.detail}")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=e.detail,
+            headers={"X-Duplicate-Context": str(e.context)}
+        )
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        # Unexpected errors (500)
+        logger.error(f"[UNIFIED] Unexpected error creating job: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create job due to an unexpected error"
+        )
+
+
 @router.get("/tasks")
 @cache_route(resource_type="task", ttl=300)  # 5 minutes TTL
 @monitor_api_response_time(threshold_seconds=1.0)
@@ -432,6 +549,146 @@ async def get_unified_invoices_data(
             operation="get_unified_invoices_data",
             context={"page": page, "limit": limit, "error_type": type(e).__name__}
         )
+
+
+@router.post("/invoices/{invoice_id}/link-to-job")
+@monitor_api_response_time(threshold_seconds=1.0)
+async def link_invoice_to_job_unified(
+    invoice_id: int,
+    link_data: InvoiceLinkToJob,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Link an invoice to an existing job (unified API).
+    This is used when multiple matching jobs are found and user selects one.
+    """
+    from app.utils.database_utils import safe_get_by_id
+    
+    job_id = link_data.job_id
+    
+    # Get the invoice
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        raise ResourceNotFoundError(
+            detail="Invoice not found",
+            resource_type="Invoice",
+            resource_id=invoice_id
+        )
+    
+    # Check if invoice is already linked
+    if invoice.converted_to_job:
+        raise BusinessLogicError(
+            detail="Invoice is already linked to a job",
+            rule="invoice_already_linked",
+            context={"invoice_id": invoice_id, "existing_job_id": invoice.converted_job_id}
+        )
+    
+    # Get the job
+    job = safe_get_by_id(db, Job, job_id)
+    if not job:
+        raise ResourceNotFoundError(
+            detail="Job not found",
+            resource_type="Job",
+            resource_id=job_id
+        )
+    
+    # Validate that job is active (NOT_STARTED or IN_PROGRESS)
+    if job.status not in [JobStatus.NOT_STARTED, JobStatus.IN_PROGRESS]:
+        raise BusinessLogicError(
+            detail="Can only link invoices to active jobs (NOT_STARTED or IN_PROGRESS)",
+            rule="job_must_be_active",
+            context={"job_id": job_id, "job_status": job.status.value}
+        )
+    
+    try:
+        # Link invoice to job using the service
+        job_creation_service.link_invoice_to_job(invoice, job, db)
+        
+        # Commit the changes
+        db.commit()
+        db.refresh(invoice)
+        db.refresh(job)
+        
+        logger.info(
+            f"[UNIFIED] Invoice {invoice_id} successfully linked to job {job_id} by user {current_user.id}"
+        )
+        
+        # Send notifications in background
+        def send_linking_notifications():
+            try:
+                import threading
+                def run_notifications():
+                    try:
+                        import asyncio
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        
+                        # Send notification to supervisor
+                        notification_message = (
+                            f"Invoice {invoice.invoice_number} (${invoice.amount:,.2f}) "
+                            f"has been linked to job '{job.title}'"
+                        )
+                        
+                        from app.models import Notification, NotificationType, NotificationStatus
+                        notification = Notification(
+                            user_id=job.supervisor_id,
+                            type=NotificationType.JOB_ASSIGNED,
+                            title="Invoice Linked to Job",
+                            message=notification_message,
+                            related_id=job.id,
+                            status=NotificationStatus.UNREAD
+                        )
+                        db.add(notification)
+                        db.commit()
+                        
+                        # Send email notification
+                        from app.services.email_service import email_service
+                        loop.run_until_complete(
+                            email_service.send_invoice_linked_notification(
+                                invoice, job, db
+                            )
+                        )
+                        
+                        loop.close()
+                        logger.info(f"[UNIFIED] Sent linking notifications for invoice {invoice_id} and job {job_id}")
+                    except Exception as e:
+                        logger.warning(f"[UNIFIED] Error sending linking notifications: {e}")
+                
+                notification_thread = threading.Thread(target=run_notifications, daemon=True)
+                notification_thread.start()
+            except Exception as e:
+                logger.warning(f"[UNIFIED] Error starting linking notifications: {e}")
+        
+        send_linking_notifications()
+        
+        # Invalidate related cache entries
+        try:
+            cache_invalidation.invalidate_invoice_data(invoice_id)
+            cache_invalidation.invalidate_job_data(job_id)
+        except Exception as e:
+            logger.warning(f"[UNIFIED] Could not invalidate cache: {e}")
+        
+        return {
+            "message": "Invoice successfully linked to job",
+            "invoice_id": invoice_id,
+            "job_id": job_id,
+            "invoice_number": invoice.invoice_number,
+            "job_title": job.title
+        }
+        
+    except (ValidationError, ResourceNotFoundError, BusinessLogicError) as e:
+        db.rollback()
+        raise e
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[UNIFIED] Error linking invoice to job: {str(e)}", exc_info=True)
+        raise DatabaseError(
+            detail="Failed to link invoice to job",
+            operation="link_invoice_to_job_unified",
+            context={"invoice_id": invoice_id, "job_id": job_id, "error": str(e)}
+        )
+
 
 @router.get("/attendance")
 @cache_route(resource_type="attendance", ttl=300)  # 5 minutes TTL

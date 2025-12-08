@@ -77,7 +77,7 @@ export const invoicesApi = baseApi.injectEndpoints({
       job_title: string;
     }, { invoice_id: number; job_id: number }>({
       query: ({ invoice_id, job_id }) => ({
-        url: `/invoices/${invoice_id}/link-to-job`,
+        url: `/unified/invoices/${invoice_id}/link-to-job`,
         method: 'POST',
         body: { job_id },
       }),
