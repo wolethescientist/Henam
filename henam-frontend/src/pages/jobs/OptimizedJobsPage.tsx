@@ -420,7 +420,7 @@ const OptimizedJobsPage: React.FC = () => {
     }
   };
 
-  const getCreationSourceBadge = (creationSource?: string) => {
+  const getCreationSourceBadge = () => {
     // Hide creation source badges - always return null
     return null;
   };
@@ -668,7 +668,7 @@ const OptimizedJobsPage: React.FC = () => {
                       <Box>
                         <Box display="flex" alignItems="center" flexWrap="wrap">
                           <Typography variant="subtitle1">{job.title}</Typography>
-                          {getCreationSourceBadge(job.creation_source)}
+                          {getCreationSourceBadge()}
                         </Box>
                         <Typography variant="caption" color="textSecondary">
                           {job.client}
