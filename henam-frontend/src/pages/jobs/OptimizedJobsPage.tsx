@@ -34,9 +34,6 @@ import {
   ListItemIcon,
   ToggleButton,
   ToggleButtonGroup,
-
-  Tooltip,
-  IconButton,
 } from '@mui/material';
 import {
   Work,
@@ -50,14 +47,6 @@ import {
   ViewList,
   ViewModule,
   History,
-  FilterList,
-  Clear,
-  Person,
-  Business,
-  CalendarToday,
-  CheckCircle,
-  Schedule,
-  PlayArrow,
 } from '@mui/icons-material';
 import { useGetUnifiedJobsDataQuery } from '../../store/api/unifiedApis';
 import { useGetMyJobsQuery } from '../../store/api/jobsApi';
@@ -431,7 +420,10 @@ const OptimizedJobsPage: React.FC = () => {
     }
   };
 
-
+  const getCreationSourceBadge = () => {
+    // Hide creation source badges - always return null
+    return null;
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-NG', {
@@ -453,388 +445,185 @@ const OptimizedJobsPage: React.FC = () => {
   }
 
   return (
-    <Box sx={{ 
-      height: '100%', 
-      display: 'flex', 
-      flexDirection: 'column',
-      bgcolor: 'grey.50',
-      minHeight: '100vh'
-    }}>
-      {/* Enhanced Header */}
-      <Paper 
-        elevation={0} 
-        sx={{ 
-          p: 3, 
-          mb: 3, 
-          borderRadius: 2,
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          color: 'white'
-        }}
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Box 
+        display="flex" 
+        justifyContent="space-between" 
+        alignItems={{ xs: 'flex-start', sm: 'center' }}
+        flexDirection={{ xs: 'column', sm: 'row' }}
+        mb={3}
+        gap={{ xs: 2, sm: 0 }}
       >
-        <Box 
-          display="flex" 
-          justifyContent="space-between" 
-          alignItems={{ xs: 'flex-start', sm: 'center' }}
-          flexDirection={{ xs: 'column', sm: 'row' }}
-          gap={{ xs: 2, sm: 0 }}
-        >
-          <Box>
-            <Typography 
-              variant="h4" 
-              sx={{ 
-                fontSize: { xs: '1.75rem', sm: '2.25rem' },
-                fontWeight: 700,
-                mb: 1
-              }}
-            >
-              Jobs Management
-            </Typography>
-            <Typography variant="body1" sx={{ opacity: 0.9 }}>
-              Manage and track all your jobs in one place
-            </Typography>
-          </Box>
-          <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-            <Button
-              variant="contained"
-              color="secondary"
-              startIcon={<Add />}
-              onClick={handleOpenCreateJobModal}
-              sx={{ 
-                textTransform: 'none',
-                bgcolor: 'white',
-                color: 'primary.main',
-                '&:hover': {
-                  bgcolor: 'grey.100'
-                },
-                px: 3,
-                py: 1.5,
-                fontWeight: 600
-              }}
-            >
-              Create New Job
-            </Button>
-          </Box>
+        <Typography variant="h4" sx={{ fontSize: { xs: '1.75rem', sm: '2.25rem' } }}>Jobs Management</Typography>
+        <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<Add />}
+            onClick={handleOpenCreateJobModal}
+            sx={{ textTransform: 'none' }}
+          >
+            Create Job
+          </Button>
         </Box>
-      </Paper>
+      </Box>
 
-      {/* Stats Cards */}
-      <Box display="flex" flexWrap="wrap" gap={3} mb={3}>
-        <Box flex="1" minWidth="200px">
-          <Card sx={{ borderRadius: 2, boxShadow: 2 }}>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography variant="h4" color="primary" fontWeight="bold">
-                    {filteredJobs.length}
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    {viewMode === 'all' ? 'Total Jobs' : 'My Jobs'}
-                  </Typography>
-                </Box>
-                <Avatar sx={{ bgcolor: 'primary.main', width: 56, height: 56 }}>
-                  <Work />
-                </Avatar>
-              </Box>
-            </CardContent>
-          </Card>
+      {/* View Mode and Display Mode Toggles */}
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3} flexWrap="wrap" gap={2}>
+        <ToggleButtonGroup
+          value={viewMode}
+          exclusive
+          onChange={handleViewModeChange}
+          aria-label="view mode"
+          sx={{
+            '& .MuiToggleButton-root': {
+              px: 3,
+              py: 1,
+              fontWeight: 600,
+              textTransform: 'none',
+              borderRadius: 2,
+              '&.Mui-selected': {
+                backgroundColor: 'primary.main',
+                color: 'white',
+                '&:hover': {
+                  backgroundColor: 'primary.dark',
+                },
+              },
+            },
+          }}
+        >
+          <ToggleButton value="all" aria-label="all jobs">
+            All Jobs
+          </ToggleButton>
+          <ToggleButton value="my" aria-label="my jobs">
+            My Jobs
+          </ToggleButton>
+        </ToggleButtonGroup>
+
+        <ToggleButtonGroup
+          value={displayMode}
+          exclusive
+          onChange={handleDisplayModeChange}
+          aria-label="display mode"
+          sx={{
+            '& .MuiToggleButton-root': {
+              px: 2,
+              py: 1,
+              textTransform: 'none',
+              '&.Mui-selected': {
+                backgroundColor: 'primary.main',
+                color: 'white',
+                '&:hover': {
+                  backgroundColor: 'primary.dark',
+                },
+              },
+            },
+          }}
+        >
+          <ToggleButton value="list" aria-label="list view">
+            <ViewList sx={{ mr: 1 }} />
+            List View
+          </ToggleButton>
+          <ToggleButton value="grouped" aria-label="grouped view">
+            <ViewModule sx={{ mr: 1 }} />
+            Client Grouped
+          </ToggleButton>
+        </ToggleButtonGroup>
+      </Box>
+
+      {/* Search and Filters */}
+      <Box 
+        display="flex" 
+        flexDirection={{ xs: 'column', sm: 'row' }}
+        flexWrap="wrap" 
+        gap={{ xs: 2, sm: 3 }} 
+        mb={3}
+      >
+        <Box flex="1" minWidth={{ xs: '100%', sm: '250px', md: '300px' }}>
+          <TextField
+            fullWidth
+            placeholder="Search jobs..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            size="medium"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search />
+                </InputAdornment>
+              ),
+            }}
+          />
         </Box>
-        <Box flex="1" minWidth="200px">
-          <Card sx={{ borderRadius: 2, boxShadow: 2 }}>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography variant="h4" color="success.main" fontWeight="bold">
-                    {filteredJobs.filter(job => job.status === 'completed').length}
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    Completed
-                  </Typography>
-                </Box>
-                <Avatar sx={{ bgcolor: 'success.main', width: 56, height: 56 }}>
-                  <CheckCircle />
-                </Avatar>
-              </Box>
-            </CardContent>
-          </Card>
+        <Box minWidth={{ xs: '100%', sm: '150px', md: '200px' }}>
+          <FormControl fullWidth size="medium">
+            <InputLabel>Status</InputLabel>
+            <Select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              label="Status"
+            >
+              <MenuItem value="">All Statuses</MenuItem>
+              <MenuItem value="not_started">Not Started</MenuItem>
+              <MenuItem value="in_progress">In Progress</MenuItem>
+              <MenuItem value="completed">Completed</MenuItem>
+            </Select>
+          </FormControl>
         </Box>
-        <Box flex="1" minWidth="200px">
-          <Card sx={{ borderRadius: 2, boxShadow: 2 }}>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography variant="h4" color="warning.main" fontWeight="bold">
-                    {filteredJobs.filter(job => job.status === 'in_progress').length}
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    In Progress
-                  </Typography>
-                </Box>
-                <Avatar sx={{ bgcolor: 'warning.main', width: 56, height: 56 }}>
-                  <PlayArrow />
-                </Avatar>
-              </Box>
-            </CardContent>
-          </Card>
+        <Box minWidth={{ xs: '100%', sm: '150px', md: '200px' }}>
+          <FormControl fullWidth size="medium">
+            <InputLabel>Supervisor</InputLabel>
+            <Select
+              value={supervisorFilter}
+              onChange={(e) => setSupervisorFilter(e.target.value as number | '')}
+              label="Supervisor"
+            >
+              <MenuItem value="">All Supervisors</MenuItem>
+              {users.map((user: any) => (
+                <MenuItem key={user.id} value={user.id}>
+                  {user.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         </Box>
-        <Box flex="1" minWidth="200px">
-          <Card sx={{ borderRadius: 2, boxShadow: 2 }}>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography variant="h4" color="info.main" fontWeight="bold">
-                    {filteredJobs.filter(job => job.status === 'not_started').length}
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    Not Started
-                  </Typography>
-                </Box>
-                <Avatar sx={{ bgcolor: 'info.main', width: 56, height: 56 }}>
-                  <Schedule />
-                </Avatar>
-              </Box>
+        <Box minWidth={{ xs: '100%', sm: '150px', md: '200px' }}>
+          <FormControl fullWidth size="medium">
+            <InputLabel>Creation Source</InputLabel>
+            <Select
+              value={creationSourceFilter}
+              onChange={(e) => setCreationSourceFilter(e.target.value)}
+              label="Creation Source"
+            >
+              <MenuItem value="">All Sources</MenuItem>
+              <MenuItem value="MANUAL">Manual</MenuItem>
+              <MenuItem value="AUTO_FROM_INVOICE">From Invoice</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
+        <Box minWidth={{ xs: '100%', sm: '120px', md: '150px' }}>
+          <Card>
+            <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
+              <Typography variant="h6" color="primary">
+                {filteredJobs.length}
+              </Typography>
+              <Typography variant="body2" color="textSecondary">
+                {viewMode === 'all' ? 'Total Jobs' : 'My Jobs'}
+              </Typography>
             </CardContent>
           </Card>
         </Box>
       </Box>
 
-      {/* View Mode and Display Mode Toggles */}
-      <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
-          <ToggleButtonGroup
-            value={viewMode}
-            exclusive
-            onChange={handleViewModeChange}
-            aria-label="view mode"
-            sx={{
-              '& .MuiToggleButton-root': {
-                px: 3,
-                py: 1.5,
-                fontWeight: 600,
-                textTransform: 'none',
-                borderRadius: 2,
-                border: '2px solid',
-                borderColor: 'primary.main',
-                color: 'primary.main',
-                '&.Mui-selected': {
-                  backgroundColor: 'primary.main',
-                  color: 'white',
-                  '&:hover': {
-                    backgroundColor: 'primary.dark',
-                  },
-                },
-                '&:hover': {
-                  backgroundColor: 'primary.50',
-                },
-              },
-            }}
-          >
-            <ToggleButton value="all" aria-label="all jobs">
-              <Work sx={{ mr: 1 }} />
-              All Jobs
-            </ToggleButton>
-            <ToggleButton value="my" aria-label="my jobs">
-              <Person sx={{ mr: 1 }} />
-              My Jobs
-            </ToggleButton>
-          </ToggleButtonGroup>
-
-          <ToggleButtonGroup
-            value={displayMode}
-            exclusive
-            onChange={handleDisplayModeChange}
-            aria-label="display mode"
-            sx={{
-              '& .MuiToggleButton-root': {
-                px: 3,
-                py: 1.5,
-                textTransform: 'none',
-                borderRadius: 2,
-                border: '2px solid',
-                borderColor: 'secondary.main',
-                color: 'secondary.main',
-                '&.Mui-selected': {
-                  backgroundColor: 'secondary.main',
-                  color: 'white',
-                  '&:hover': {
-                    backgroundColor: 'secondary.dark',
-                  },
-                },
-                '&:hover': {
-                  backgroundColor: 'secondary.50',
-                },
-              },
-            }}
-          >
-            <ToggleButton value="list" aria-label="list view">
-              <ViewList sx={{ mr: 1 }} />
-              List View
-            </ToggleButton>
-            <ToggleButton value="grouped" aria-label="grouped view">
-              <ViewModule sx={{ mr: 1 }} />
-              Client Grouped
-            </ToggleButton>
-          </ToggleButtonGroup>
-        </Box>
-      </Paper>
-
-      {/* Enhanced Search and Filters */}
-      <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-          <Box display="flex" alignItems="center" gap={1}>
-            <FilterList color="primary" />
-            <Typography variant="h6" color="primary" fontWeight="600">
-              Search & Filters
-            </Typography>
-          </Box>
-          {(searchTerm || statusFilter || supervisorFilter || creationSourceFilter) && (
-            <Tooltip title="Clear all filters">
-              <IconButton 
-                onClick={() => {
-                  setSearchTerm('');
-                  setStatusFilter('');
-                  setSupervisorFilter('');
-                  setCreationSourceFilter('');
-                }}
-                size="small"
-                color="primary"
-              >
-                <Clear />
-              </IconButton>
-            </Tooltip>
-          )}
-        </Box>
-        
-        <Box display="flex" flexWrap="wrap" gap={2}>
-          <Box flex="2" minWidth="300px">
-            <TextField
-              fullWidth
-              placeholder="Search by job title, client, or description..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              size="medium"
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  borderRadius: 2,
-                }
-              }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Search color="primary" />
-                  </InputAdornment>
-                ),
-                endAdornment: searchTerm && (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={() => setSearchTerm('')}
-                      size="small"
-                      edge="end"
-                    >
-                      <Clear />
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Box>
-          
-          <Box flex="1" minWidth="150px">
-            <FormControl fullWidth size="medium">
-              <InputLabel>Status</InputLabel>
-              <Select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                label="Status"
-                sx={{ borderRadius: 2 }}
-              >
-                <MenuItem value="">All Statuses</MenuItem>
-                <MenuItem value="not_started">
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <Schedule fontSize="small" />
-                    Not Started
-                  </Box>
-                </MenuItem>
-                <MenuItem value="in_progress">
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <PlayArrow fontSize="small" />
-                    In Progress
-                  </Box>
-                </MenuItem>
-                <MenuItem value="completed">
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <CheckCircle fontSize="small" />
-                    Completed
-                  </Box>
-                </MenuItem>
-              </Select>
-            </FormControl>
-          </Box>
-          
-          <Box flex="1" minWidth="180px">
-            <FormControl fullWidth size="medium">
-              <InputLabel>Supervisor</InputLabel>
-              <Select
-                value={supervisorFilter}
-                onChange={(e) => setSupervisorFilter(e.target.value as number | '')}
-                label="Supervisor"
-                sx={{ borderRadius: 2 }}
-              >
-                <MenuItem value="">All Supervisors</MenuItem>
-                {users.map((user: any) => (
-                  <MenuItem key={user.id} value={user.id}>
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <Person fontSize="small" />
-                      {user.name}
-                    </Box>
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Box>
-          
-          <Box flex="1" minWidth="180px">
-            <FormControl fullWidth size="medium">
-              <InputLabel>Creation Source</InputLabel>
-              <Select
-                value={creationSourceFilter}
-                onChange={(e) => setCreationSourceFilter(e.target.value)}
-                label="Creation Source"
-                sx={{ borderRadius: 2 }}
-              >
-                <MenuItem value="">All Sources</MenuItem>
-                <MenuItem value="MANUAL">
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <Edit fontSize="small" />
-                    Manual
-                  </Box>
-                </MenuItem>
-                <MenuItem value="AUTO_FROM_INVOICE">
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <Receipt fontSize="small" />
-                    From Invoice
-                  </Box>
-                </MenuItem>
-              </Select>
-            </FormControl>
-          </Box>
-        </Box>
-      </Paper>
-
-      {/* Enhanced Date Filter */}
-      <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-        <Box display="flex" alignItems="center" gap={1} mb={2}>
-          <CalendarToday color="primary" />
-          <Typography variant="h6" color="primary" fontWeight="600">
-            Date Range Filter
-          </Typography>
-        </Box>
+      {/* Date Filter */}
+      <Box mb={3}>
         <DateRangeFilter
           value={dateFilter}
           onChange={setDateFilter}
-          label="Filter jobs by date range"
+          label="Job Date Filter"
           showWeekFilter={true}
         />
-      </Paper>
+      </Box>
 
       {/* Jobs Display - List or Grouped View */}
       {displayMode === 'grouped' ? (
@@ -847,158 +636,65 @@ const OptimizedJobsPage: React.FC = () => {
           onViewAuditLog={handleOpenAuditLogDialog}
         />
       ) : (
-        <Paper sx={{ 
-          flex: 1, 
-          display: 'flex', 
-          flexDirection: 'column', 
-          overflow: 'hidden',
-          borderRadius: 2,
-          boxShadow: 3
-        }}>
-          <Box sx={{ 
-            p: 2, 
-            bgcolor: 'primary.main', 
-            color: 'white',
-            borderRadius: '8px 8px 0 0'
-          }}>
-            <Typography variant="h6" fontWeight="600">
-              Jobs List ({filteredJobs.length} {filteredJobs.length === 1 ? 'job' : 'jobs'})
-            </Typography>
-          </Box>
-          
+        <Paper sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <TableContainer sx={{ overflowX: 'auto', flex: 1 }}>
             <Table sx={{ minWidth: { xs: 600, sm: 650 } }}>
               <TableHead>
-                <TableRow sx={{ bgcolor: 'grey.50' }}>
-                  <TableCell sx={{ fontWeight: 600, color: 'primary.main' }}>Job Details</TableCell>
-                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' }, fontWeight: 600, color: 'primary.main' }}>Client</TableCell>
-                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' }, fontWeight: 600, color: 'primary.main' }}>Team</TableCell>
-                  <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' }, fontWeight: 600, color: 'primary.main' }}>Assigned To</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: 'primary.main' }}>Progress</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: 'primary.main' }}>Status</TableCell>
-                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' }, fontWeight: 600, color: 'primary.main' }}>Timeline</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 600, color: 'primary.main' }}>Actions</TableCell>
+                <TableRow>
+                  <TableCell>Job Title</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Client</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Team</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>Assigned To</TableCell>
+                  <TableCell>Progress</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Start Date</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>End Date</TableCell>
+                  <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-              {filteredJobs.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} align="center" sx={{ py: 8 }}>
-                    <Box display="flex" flexDirection="column" alignItems="center" gap={2}>
-                      <Avatar sx={{ width: 80, height: 80, bgcolor: 'grey.100' }}>
-                        <Work sx={{ fontSize: 40, color: 'grey.400' }} />
-                      </Avatar>
-                      <Typography variant="h6" color="textSecondary">
-                        No jobs found
-                      </Typography>
-                      <Typography variant="body2" color="textSecondary" textAlign="center">
-                        {searchTerm || statusFilter || supervisorFilter || creationSourceFilter
-                          ? 'Try adjusting your filters to see more results'
-                          : 'Get started by creating your first job'
-                        }
-                      </Typography>
-                      {!searchTerm && !statusFilter && !supervisorFilter && !creationSourceFilter && (
-                        <Button
-                          variant="contained"
-                          startIcon={<Add />}
-                          onClick={handleOpenCreateJobModal}
-                          sx={{ mt: 2 }}
-                        >
-                          Create Your First Job
-                        </Button>
-                      )}
-                    </Box>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredJobs.map((job, index) => (
+              {filteredJobs.map((job, index) => (
                 <TableRow 
                   key={job.id || `job-${index}`}
                   sx={{
                     ...getHighlightStyles(`job-${job.id}`),
-                    '&:hover': {
-                      bgcolor: 'action.hover',
-                      transform: 'scale(1.001)',
-                      transition: 'all 0.2s ease-in-out',
-                    },
-                    '&:nth-of-type(even)': {
-                      bgcolor: 'grey.25',
-                    },
-                    borderLeft: `4px solid ${
-                      job.status === 'completed' ? '#4caf50' :
-                      job.status === 'in_progress' ? '#ff9800' :
-                      '#2196f3'
-                    }`,
                   }}
                 >
                   <TableCell>
                     <Box display="flex" alignItems="center">
-                      <Avatar 
-                        sx={{ 
-                          mr: 2, 
-                          bgcolor: job.status === 'completed' ? 'success.main' :
-                                  job.status === 'in_progress' ? 'warning.main' :
-                                  'info.main',
-                          width: 48,
-                          height: 48
-                        }}
-                      >
+                      <Avatar sx={{ mr: 2, bgcolor: 'primary.main' }}>
                         <Work />
                       </Avatar>
                       <Box>
-                        <Typography 
-                          variant="subtitle1" 
-                          fontWeight="600"
-                          sx={{ 
-                            color: 'text.primary',
-                            mb: 0.5
-                          }}
-                        >
-                          {job.title}
+                        <Box display="flex" alignItems="center" flexWrap="wrap">
+                          <Typography variant="subtitle1">{job.title}</Typography>
+                          {getCreationSourceBadge()}
+                        </Box>
+                        <Typography variant="caption" color="textSecondary">
+                          {job.client}
                         </Typography>
-                        <Box display="flex" alignItems="center" gap={1} sx={{ display: { xs: 'flex', sm: 'none' } }}>
-                          <Business fontSize="small" color="action" />
-                          <Typography variant="caption" color="textSecondary">
-                            {job.client}
-                          </Typography>
-                        </Box>
-                        <Box display="flex" alignItems="center" gap={1} sx={{ display: { xs: 'flex', lg: 'none' } }}>
-                          <Person fontSize="small" color="action" />
-                          <Typography variant="caption" color="textSecondary">
-                            {job.supervisor?.name || 'Unassigned'}
-                          </Typography>
-                        </Box>
+                        {/* Mobile-only assigner info */}
+                        <Typography variant="caption" color="textSecondary" display="block">
+                          Assigned to: {job.supervisor?.name || 'Unassigned'}
+                        </Typography>
                       </Box>
                     </Box>
                   </TableCell>
-                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <Business fontSize="small" color="primary" />
-                      <Typography variant="body2" fontWeight="500">
-                        {job.client}
-                      </Typography>
-                    </Box>
+                  <TableCell>
+                    <Typography variant="body2">{job.client}</Typography>
                   </TableCell>
-                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                  <TableCell>
                     {job.team ? (
                       <Chip
                         label={job.team.name}
                         color="primary"
-                        variant="filled"
-                        size="small"
-                        sx={{
-                          fontWeight: 600,
-                          borderRadius: 2,
-                        }}
-                      />
-                    ) : (
-                      <Chip
-                        label="No Team"
-                        color="default"
                         variant="outlined"
                         size="small"
-                        sx={{ borderRadius: 2 }}
                       />
+                    ) : (
+                      <Typography variant="body2" color="textSecondary">
+                        No Team
+                      </Typography>
                     )}
                   </TableCell>
                   <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
@@ -1033,64 +729,31 @@ const OptimizedJobsPage: React.FC = () => {
                     )}
                   </TableCell>
                   <TableCell>
-                    <Box>
-                      <Box display="flex" alignItems="center" justifyContent="space-between" mb={0.5}>
-                        <Typography variant="caption" color="textSecondary">
-                          Progress
-                        </Typography>
-                        <Typography variant="caption" fontWeight="600" color="primary">
-                          {job.progress || 0}%
-                        </Typography>
+                    <Box display="flex" alignItems="center">
+                      <Box sx={{ width: '100%', mr: 1 }}>
+                        <LinearProgress
+                          variant="determinate"
+                          value={job.progress || 0}
+                          sx={{ height: 8, borderRadius: 4 }}
+                        />
                       </Box>
-                      <LinearProgress
-                        variant="determinate"
-                        value={job.progress || 0}
-                        sx={{ 
-                          height: 8, 
-                          borderRadius: 4,
-                          bgcolor: 'grey.200',
-                          '& .MuiLinearProgress-bar': {
-                            borderRadius: 4,
-                            bgcolor: job.progress === 100 ? 'success.main' :
-                                    job.progress >= 50 ? 'warning.main' :
-                                    'primary.main'
-                          }
-                        }}
-                      />
+                      <Typography variant="body2" color="textSecondary">
+                        {job.progress || 0}%
+                      </Typography>
                     </Box>
                   </TableCell>
                   <TableCell>
                     <Chip
                       label={getStatusLabel(job.status || 'not_started')}
                       color={getStatusColor(job.status || 'not_started') as any}
-                      size="medium"
-                      icon={
-                        job.status === 'completed' ? <CheckCircle /> :
-                        job.status === 'in_progress' ? <PlayArrow /> :
-                        <Schedule />
-                      }
-                      sx={{
-                        fontWeight: 600,
-                        borderRadius: 2,
-                        minWidth: 120,
-                      }}
+                      size="small"
                     />
                   </TableCell>
-                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                    <Box>
-                      <Box display="flex" alignItems="center" gap={1} mb={0.5}>
-                        <CalendarToday fontSize="small" color="primary" />
-                        <Typography variant="caption" color="textSecondary">
-                          Timeline
-                        </Typography>
-                      </Box>
-                      <Typography variant="body2" fontWeight="500">
-                        {job.start_date ? new Date(job.start_date).toLocaleDateString() : 'No start date'}
-                      </Typography>
-                      <Typography variant="caption" color="textSecondary">
-                        to {job.end_date ? new Date(job.end_date).toLocaleDateString() : 'No end date'}
-                      </Typography>
-                    </Box>
+                  <TableCell>
+                    {job.start_date ? new Date(job.start_date).toLocaleDateString() : 'N/A'}
+                  </TableCell>
+                  <TableCell>
+                    {job.end_date ? new Date(job.end_date).toLocaleDateString() : 'N/A'}
                   </TableCell>
                   <TableCell align="right">
                     <KebabMenu
@@ -1132,36 +795,20 @@ const OptimizedJobsPage: React.FC = () => {
                     />
                   </TableCell>
                 </TableRow>
-                ))
-              )}
+              ))}
               </TableBody>
             </Table>
           </TableContainer>
 
-          <Box sx={{ 
-            p: 2, 
-            bgcolor: 'grey.50', 
-            borderTop: '1px solid',
-            borderColor: 'divider'
-          }}>
-            <TablePagination
-              rowsPerPageOptions={[5, 10, 25, 50]}
-              component="div"
-              count={pagination?.total_count || 0}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-              sx={{
-                '& .MuiTablePagination-toolbar': {
-                  minHeight: 52,
-                },
-                '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
-                  fontWeight: 500,
-                },
-              }}
-            />
-          </Box>
+          <TablePagination
+            rowsPerPageOptions={[5, 10, 25]}
+            component="div"
+            count={pagination?.total_count || 0}
+            rowsPerPage={rowsPerPage}
+            page={page}
+            onPageChange={handleChangePage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+          />
         </Paper>
       )}
 
