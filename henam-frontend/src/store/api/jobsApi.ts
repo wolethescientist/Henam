@@ -229,7 +229,7 @@ export const jobsApi = baseApi.injectEndpoints({
       total_pending: number;
       last_job_date: string;
     }>, void>({
-      query: () => '/jobs/clients',
+      query: () => '/unified/jobs/clients',
       providesTags: ['Job', 'Client'],
     }),
     getJobsByClient: builder.query<Job[], { client_name: string; include_completed?: boolean }>({
