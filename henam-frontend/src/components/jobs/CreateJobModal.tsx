@@ -63,6 +63,7 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({
   const [duplicateCheckResult, setDuplicateCheckResult] = useState<any>(null);
   const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
   const [duplicateCheckError, setDuplicateCheckError] = useState<string | null>(null);
+  const [lastCheckedCombination, setLastCheckedCombination] = useState<string | null>(null);
 
   // Toast notifications
   const { showSuccess, showError, showWarning } = useToast();
@@ -104,6 +105,7 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({
       setDuplicateCheckResult(null);
       setShowDuplicateWarning(false);
       setDuplicateCheckError(null);
+      setLastCheckedCombination(null);
     }
   }, [open, teams]);
 
@@ -116,12 +118,16 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({
         setDuplicateCheckResult(null);
         setShowDuplicateWarning(false);
         setDuplicateCheckError(null);
+        setLastCheckedCombination(null);
       }
       return;
     }
 
-    // Don't check if already checking or if we already have results for this combination
-    if (isCheckingDuplicates || isSubmitting) {
+    // Create a unique key for this title/client combination
+    const currentCombination = `${formData.title.trim()}|${formData.client.trim()}`;
+    
+    // Don't check if already checking, submitting, or if we already checked this exact combination
+    if (isCheckingDuplicates || isSubmitting || lastCheckedCombination === currentCombination) {
       return;
     }
 
@@ -140,6 +146,7 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({
         }).unwrap();
 
         setDuplicateCheckResult(result);
+        setLastCheckedCombination(currentCombination);
 
         if (result.has_duplicates) {
           setShowDuplicateWarning(true);
@@ -148,6 +155,7 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({
         console.error('Failed to check duplicates:', error);
         const errorMsg = error?.data?.detail || 'Failed to check for duplicates. You can still proceed with creation.';
         setDuplicateCheckError(errorMsg);
+        setLastCheckedCombination(currentCombination);
         // Allow creation even if duplicate check fails
         setDuplicateCheckResult({ has_duplicates: false, matching_jobs: [], is_repeat_project: false });
       } finally {
@@ -156,7 +164,7 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({
     }, 800); // 800ms debounce
 
     return () => clearTimeout(timeoutId);
-  }, [formData.title, formData.client, open, isCheckingDuplicates, isSubmitting]); // Removed checkDuplicates from dependencies
+  }, [formData.title, formData.client, open, isCheckingDuplicates, isSubmitting, lastCheckedCombination]); // Added lastCheckedCombination to dependencies
 
   // Validate a single field
   const validateField = (field: keyof CreateJobForm, value: any): string | undefined => {
@@ -298,6 +306,7 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({
     setDuplicateCheckResult(null);
     setDuplicateCheckError(null);
     setShowDuplicateWarning(false);
+    setLastCheckedCombination(null); // Reset to force a fresh check
 
     try {
       const result = await checkDuplicates({
@@ -306,6 +315,8 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({
       }).unwrap();
 
       setDuplicateCheckResult(result);
+      const currentCombination = `${formData.title.trim()}|${formData.client.trim()}`;
+      setLastCheckedCombination(currentCombination);
 
       if (result.has_duplicates) {
         setShowDuplicateWarning(true);
@@ -323,6 +334,8 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({
       console.error('Failed to check duplicates:', error);
       const errorMsg = error?.data?.detail || 'Failed to check for duplicates. You can still proceed with creation.';
       setDuplicateCheckError(errorMsg);
+      const currentCombination = `${formData.title.trim()}|${formData.client.trim()}`;
+      setLastCheckedCombination(currentCombination);
       if (showToasts) {
         showError(errorMsg);
       }
