@@ -917,9 +917,17 @@ async def check_job_duplicates(
 # IMPORTANT: Specific routes must come BEFORE parameterized routes
 # /jobs/clients must come before /jobs/{job_id}/audit-log
 # Otherwise FastAPI will match "clients" as a job_id parameter
+
+# Simple test endpoint to debug 404 issue
+@router.get("/jobs/clients-test")
+async def test_clients_endpoint():
+    """Simple test endpoint to verify routing works"""
+    return {"message": "Clients endpoint is working", "status": "success"}
+
 @router.get("/jobs/clients")
-@cache_route(resource_type="job", ttl=300)  # 5 minutes TTL
-@monitor_api_response_time(threshold_seconds=1.0)
+# Temporarily removed decorators to debug 404
+# @cache_route(resource_type="job", ttl=300)  # 5 minutes TTL
+# @monitor_api_response_time(threshold_seconds=1.0)
 async def get_clients_list(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
