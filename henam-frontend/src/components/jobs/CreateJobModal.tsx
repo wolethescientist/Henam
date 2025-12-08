@@ -33,6 +33,8 @@ interface CreateJobModalProps {
   open: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  creationSource?: 'manual' | 'invoice';
+  originatingInvoiceId?: number;
 }
 
 interface FormErrors {
@@ -47,6 +49,8 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({
   open,
   onClose,
   onSuccess,
+  creationSource = 'manual',
+  originatingInvoiceId,
 }) => {
   const [formData, setFormData] = useState<CreateJobForm>({
     title: '',
@@ -366,9 +370,16 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      await createJob(formData).unwrap();
+      const jobPayload = {
+        ...formData,
+        creation_source: creationSource,
+        ...(originatingInvoiceId && { originating_invoice_id: originatingInvoiceId }),
+      };
+      
+      await createJob(jobPayload).unwrap();
 
-      showSuccess(`Job "${formData.title}" created successfully!`);
+      const sourceText = creationSource === 'invoice' ? 'from invoice' : '';
+      showSuccess(`Job "${formData.title}" created successfully ${sourceText}!`);
       
       if (onSuccess) {
         onSuccess();
@@ -410,11 +421,16 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      // TODO: In the future, pass justification to the API when backend supports it
-      // For now, just create the job
-      await createJob(formData).unwrap();
+      const jobPayload = {
+        ...formData,
+        creation_source: creationSource,
+        ...(originatingInvoiceId && { originating_invoice_id: originatingInvoiceId }),
+      };
+      
+      await createJob(jobPayload).unwrap();
 
-      showSuccess(`Job "${formData.title}" created successfully (duplicate override applied)`);
+      const sourceText = creationSource === 'invoice' ? 'from invoice' : '';
+      showSuccess(`Job "${formData.title}" created successfully ${sourceText} (duplicate override applied)`);
       
       if (onSuccess) {
         onSuccess();
@@ -469,14 +485,17 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({
         <Box display="flex" alignItems="center" gap={1}>
           <Work color="primary" />
           <Typography variant="h6">
-            Create New Job
+            {creationSource === 'invoice' ? 'Create Job from Invoice' : 'Create New Job'}
           </Typography>
         </Box>
       </DialogTitle>
       <DialogContent>
         <Box sx={{ pt: 2 }}>
           <Alert severity="info" sx={{ mb: 3 }}>
-            Create a job manually before an invoice is received. The system will check for duplicates before creation.
+            {creationSource === 'invoice' 
+              ? 'Create a job based on invoice data. The system will check for duplicates before creation.'
+              : 'Create a job manually before an invoice is received. The system will check for duplicates before creation.'
+            }
           </Alert>
 
           {/* Job Title */}

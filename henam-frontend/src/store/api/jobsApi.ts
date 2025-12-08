@@ -26,13 +26,15 @@ export const jobsApi = baseApi.injectEndpoints({
       providesTags: (_, __, id) => [{ type: 'Job', id }],
     }),
     createJob: builder.mutation<Job, CreateJobForm>({
-      query: ({ skip_duplicate_check, duplicate_justification, ...job }) => ({
+      query: ({ skip_duplicate_check, duplicate_justification, creation_source, originating_invoice_id, ...job }) => ({
         url: '/unified/jobs',
         method: 'POST',
         body: job,
         params: {
           ...(skip_duplicate_check !== undefined && { skip_duplicate_check }),
           ...(duplicate_justification && { duplicate_justification }),
+          ...(creation_source && { creation_source }),
+          ...(originating_invoice_id && { originating_invoice_id }),
         },
       }),
       invalidatesTags: ['Job', 'Dashboard', 'FinancialSummary', 'Client'],

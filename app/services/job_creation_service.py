@@ -189,6 +189,180 @@ class JobCreationService:
                 # Don't fail job creation if notification fails
             
             return db_job
+    
+    def create_job_from_invoice_manual(
+        self,
+        job_data: JobCreate,
+        current_user: User,
+        db: Session,
+        originating_invoice_id: int,
+        skip_duplicate_check: bool = False,
+        duplicate_justification: Optional[str] = None
+    ) -> Job:
+        """
+        Create job manually from invoice data.
+        Similar to create_job_manual but sets creation_source to AUTO_FROM_INVOICE.
+        
+        Args:
+            job_data: Job creation data
+            current_user: User creating the job
+            db: Database session
+            originating_invoice_id: ID of the originating invoice
+            skip_duplicate_check: If True, bypass duplicate warning
+            duplicate_justification: Required if skip_duplicate_check is True
+            
+        Returns:
+            Created Job object with creation_source set to AUTO_FROM_INVOICE
+            
+        Raises:
+            ValidationError: If validation fails
+            ResourceNotFoundError: If team, supervisor, or invoice not found
+            BusinessLogicError: If duplicate detected and not overridden
+        """
+        try:
+            logger.info(
+                f"Creating job from invoice {originating_invoice_id}: {job_data.title} for client {job_data.client} "
+                f"by user {current_user.id}"
+            )
+            
+            # Step 1: Validate invoice exists
+            invoice = db.query(Invoice).filter(Invoice.id == originating_invoice_id).first()
+            if not invoice:
+                raise ResourceNotFoundError(
+                    detail="Originating invoice not found",
+                    resource_type="Invoice",
+                    resource_id=originating_invoice_id
+                )
+            
+            # Step 2: Validate job data (subtask 3.1)
+            self._validate_job_data(job_data, db)
+            
+            # Step 3: Check for duplicates (unless skipped)
+            if not skip_duplicate_check:
+                duplicate_result = self.duplicate_service.check_for_duplicates(
+                    client_name=job_data.client,
+                    job_title=job_data.title,
+                    db=db
+                )
+                
+                if duplicate_result.has_duplicates:
+                    # Log duplicate warning
+                    job_data_dict = {
+                        "title": job_data.title,
+                        "client": job_data.client,
+                        "start_date": job_data.start_date.isoformat() if job_data.start_date else None,
+                        "end_date": job_data.end_date.isoformat() if job_data.end_date else None,
+                        "team_id": job_data.team_id,
+                        "supervisor_id": job_data.supervisor_id
+                    }
+                    self.audit_service.log_duplicate_decision(
+                        job_data=job_data_dict,
+                        duplicate_jobs=duplicate_result.matching_jobs,
+                        user_decision="warning_shown",
+                        justification=None,
+                        user_id=current_user.id,
+                        db=db
+                    )
+                    
+                    # Raise business logic error to inform caller about duplicates
+                    raise BusinessLogicError(
+                        detail="Duplicate jobs found. Please review or provide justification to proceed.",
+                        rule="duplicate_prevention",
+                        context={
+                            "matching_jobs": [
+                                {"id": j.id, "title": j.title, "status": j.status.value}
+                                for j in duplicate_result.matching_jobs
+                            ],
+                            "is_repeat_project": duplicate_result.is_repeat_project,
+                            "suggestion": duplicate_result.suggestion
+                        }
+                    )
+            
+            # Step 4: Validate justification if duplicate check was skipped
+            if skip_duplicate_check and not duplicate_justification:
+                raise ValidationError(
+                    detail="Justification is required when creating a job despite duplicate warning",
+                    field="duplicate_justification",
+                    context={"skip_duplicate_check": skip_duplicate_check}
+                )
+            
+            # Step 5: Determine supervisor
+            supervisor_id = job_data.supervisor_id if job_data.supervisor_id else current_user.id
+            
+            # Step 6: Create the job with AUTO_FROM_INVOICE source
+            db_job = Job(
+                title=job_data.title,
+                client=job_data.client,
+                start_date=job_data.start_date,
+                end_date=job_data.end_date,
+                team_id=job_data.team_id,
+                supervisor_id=supervisor_id,
+                assigner_id=current_user.id,
+                creation_source=JobCreationSource.AUTO_FROM_INVOICE,
+                originating_invoice_id=originating_invoice_id,
+                duplicate_override=skip_duplicate_check,
+                duplicate_justification=duplicate_justification,
+                progress=0.0,
+                status=JobStatus.NOT_STARTED,
+                days_on_job=0
+            )
+            
+            db.add(db_job)
+            db.flush()  # Get the job ID
+            
+            # Step 7: Link invoice to the new job
+            self.link_invoice_to_job(invoice, db_job, db)
+            
+            # Step 8: Log job creation in audit trail
+            self.audit_service.log_job_creation(
+                job=db_job,
+                source=JobCreationSource.AUTO_FROM_INVOICE,
+                user_id=current_user.id,
+                originating_invoice_id=originating_invoice_id,
+                db=db
+            )
+            
+            # Step 9: Log duplicate override if applicable
+            if skip_duplicate_check:
+                # Log duplicate decision with "create_anyway" decision
+                job_data_dict = {
+                    "title": job_data.title,
+                    "client": job_data.client,
+                    "start_date": job_data.start_date.isoformat() if job_data.start_date else None,
+                    "end_date": job_data.end_date.isoformat() if job_data.end_date else None,
+                    "team_id": job_data.team_id,
+                    "supervisor_id": job_data.supervisor_id
+                }
+                self.audit_service.log_duplicate_decision(
+                    job_data=job_data_dict,
+                    duplicate_jobs=[],  # Already created, so we don't have the duplicate list
+                    user_decision="create_anyway",
+                    justification=duplicate_justification,
+                    user_id=current_user.id,
+                    db=db
+                )
+            
+            # Commit the transaction
+            db.commit()
+            db.refresh(db_job)
+            
+            logger.info(f"Successfully created job from invoice {db_job.id}: {db_job.title}")
+            
+            # Send notifications asynchronously (non-blocking)
+            try:
+                import asyncio
+                from app.services.notification_service import notification_service
+                
+                # Create a task to send notifications without blocking
+                asyncio.create_task(
+                    notification_service.notify_invoice_job_created(db_job, current_user, invoice, db)
+                )
+                logger.info(f"Invoice job creation notification queued for job {db_job.id}")
+            except Exception as e:
+                logger.warning(f"Could not queue invoice job creation notification: {e}")
+                # Don't fail job creation if notification fails
+            
+            return db_job
             
         except (ValidationError, ResourceNotFoundError, BusinessLogicError) as e:
             db.rollback()

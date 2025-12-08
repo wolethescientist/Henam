@@ -454,6 +454,8 @@ export interface CreateJobForm {
   assigner_id?: number;
   skip_duplicate_check?: boolean;
   duplicate_justification?: string;
+  creation_source?: 'manual' | 'invoice';
+  originating_invoice_id?: number;
 }
 
 

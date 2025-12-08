@@ -272,19 +272,23 @@ async def create_job_unified(
     job_data: JobCreate,
     skip_duplicate_check: bool = False,
     duplicate_justification: Optional[str] = None,
+    creation_source: Optional[str] = "manual",
+    originating_invoice_id: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Create a new job manually (unified API).
+    Create a new job (unified API).
     
     Parameters:
     - job_data: Job creation data (title, client, dates, team, supervisor)
     - skip_duplicate_check: Set to True to bypass duplicate warning (default: False)
     - duplicate_justification: Required if skip_duplicate_check is True
+    - creation_source: Source of job creation ("manual" or "invoice", default: "manual")
+    - originating_invoice_id: ID of originating invoice (required if creation_source is "invoice")
     
     Returns:
-    - Created job with creation_source set to MANUAL
+    - Created job with appropriate creation_source
     
     Raises:
     - 400: Validation error (missing fields, invalid dates, missing justification)
@@ -305,14 +309,31 @@ async def create_job_unified(
                 detail="Justification is required when creating a job despite duplicate warning"
             )
         
+        # Validate creation source and originating invoice
+        if creation_source == "invoice" and not originating_invoice_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="originating_invoice_id is required when creation_source is 'invoice'"
+            )
+        
         # Use JobCreationService to create the job
-        db_job = job_creation_service.create_job_manual(
-            job_data=job_data,
-            current_user=current_user,
-            db=db,
-            skip_duplicate_check=skip_duplicate_check,
-            duplicate_justification=duplicate_justification
-        )
+        if creation_source == "invoice":
+            db_job = job_creation_service.create_job_from_invoice_manual(
+                job_data=job_data,
+                current_user=current_user,
+                db=db,
+                originating_invoice_id=originating_invoice_id,
+                skip_duplicate_check=skip_duplicate_check,
+                duplicate_justification=duplicate_justification
+            )
+        else:
+            db_job = job_creation_service.create_job_manual(
+                job_data=job_data,
+                current_user=current_user,
+                db=db,
+                skip_duplicate_check=skip_duplicate_check,
+                duplicate_justification=duplicate_justification
+            )
         
         logger.info(
             f"[UNIFIED] Job {db_job.id} created successfully by user {current_user.id}. "
