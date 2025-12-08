@@ -914,6 +914,9 @@ async def check_job_duplicates(
         )
 
 
+# IMPORTANT: Specific routes must come BEFORE parameterized routes
+# /jobs/clients must come before /jobs/{job_id}/audit-log
+# Otherwise FastAPI will match "clients" as a job_id parameter
 @router.get("/jobs/clients")
 @cache_route(resource_type="job", ttl=300)  # 5 minutes TTL
 @monitor_api_response_time(threshold_seconds=1.0)
