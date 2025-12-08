@@ -34,6 +34,12 @@ async def test_unified_router():
     """Test endpoint to verify unified router is working"""
     return {"message": "Unified router is working", "endpoint": "/unified/test"}
 
+# Debug endpoint without authentication
+@router.get("/test-no-auth")
+async def test_no_auth():
+    """Test endpoint without authentication"""
+    return {"message": "No auth test working", "endpoint": "/unified/test-no-auth"}
+
 @router.get("/teams")
 @cache_route(resource_type="team", ttl=300)  # 5 minutes TTL
 @monitor_api_response_time(threshold_seconds=1.0)

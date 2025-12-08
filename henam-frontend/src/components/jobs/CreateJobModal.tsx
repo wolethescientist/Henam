@@ -156,7 +156,7 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({
     }, 800); // 800ms debounce
 
     return () => clearTimeout(timeoutId);
-  }, [formData.title, formData.client, open, isCheckingDuplicates, isSubmitting, checkDuplicates]);
+  }, [formData.title, formData.client, open, isCheckingDuplicates, isSubmitting]); // Removed checkDuplicates from dependencies
 
   // Validate a single field
   const validateField = (field: keyof CreateJobForm, value: any): string | undefined => {
