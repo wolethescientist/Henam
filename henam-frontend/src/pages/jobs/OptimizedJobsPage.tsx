@@ -421,27 +421,7 @@ const OptimizedJobsPage: React.FC = () => {
   };
 
   const getCreationSourceBadge = (creationSource?: string) => {
-    if (!creationSource) return null;
-    
-    if (creationSource === 'MANUAL') {
-      return (
-        <Chip
-          label="Manual"
-          size="small"
-          color="secondary"
-          sx={{ ml: 1 }}
-        />
-      );
-    } else if (creationSource === 'AUTO_FROM_INVOICE') {
-      return (
-        <Chip
-          label="From Invoice"
-          size="small"
-          color="info"
-          sx={{ ml: 1 }}
-        />
-      );
-    }
+    // Hide creation source badges - always return null
     return null;
   };
 
