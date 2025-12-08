@@ -28,6 +28,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/unified", tags=["unified-apis"])
 
+# Debug endpoint to test if unified router is working
+@router.get("/test")
+async def test_unified_router():
+    """Test endpoint to verify unified router is working"""
+    return {"message": "Unified router is working", "endpoint": "/unified/test"}
+
 @router.get("/teams")
 @cache_route(resource_type="team", ttl=300)  # 5 minutes TTL
 @monitor_api_response_time(threshold_seconds=1.0)
